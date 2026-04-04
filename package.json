@@ -1,0 +1,23 @@
+{
+  "name": "dlrg_infoscreen",
+  "version": "1.0.0",
+  "description": "infoscreen Software for DLRG Schleswig Holstein",
+  "homepage": "https://github.com/achat99/dlrg_infoscreen#readme",
+  "bugs": {
+    "url": "https://github.com/achat99/dlrg_infoscreen/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/achat99/dlrg_infoscreen.git"
+  },
+  "license": "ISC",
+  "author": "Finn-Niklas Rathjen",
+  "type": "commonjs",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
