@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medien</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="/admin/assets/css/admin.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="topbar"></div>
+    <main class="container py-4">
+      <div class="page-header">
+        <div>
+          <h1>Medienverwaltung</h1>
+          <p>Bilder und Karten hochladen und aktivieren.</p>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card"><div class="card-body">
+            <h2 class="h5 fw-bold mb-3">Neues Medium</h2>
+            <form id="mediaForm" class="row g-3">
+              <input type="hidden" id="mediaId" />
+              <div class="col-12"><input type="file" class="form-control" id="mediaFile" /></div>
+              <div class="col-12"><input class="form-control" id="mediaTitle" placeholder="Titel" /></div>
+              <div class="col-12"><textarea class="form-control" id="mediaCaption" rows="3" placeholder="Beschreibung"></textarea></div>
+              <div class="col-md-6"><select class="form-select" id="mediaType"><option value="image">Bild</option><option value="sponsor">Sponsor</option><option value="map">Karte</option></select></div>
+              <div class="col-md-6"><input class="form-control" type="number" min="3" id="mediaDuration" placeholder="Dauer (s)" /></div>
+              <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="mediaActive" checked /><label class="form-check-label" for="mediaActive">Aktiv</label></div>
+              <div class="col-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Speichern</button><button class="btn btn-outline-secondary" type="button" id="mediaCancel">Zurücksetzen</button></div>
+            </form>
+          </div></div>
+        </div>
+        <div class="col-lg-8">
+          <div class="card"><div class="card-body">
+            <div id="mediaList" class="d-grid gap-3"></div>
+          </div></div>
+        </div>
+      </div>
+    </main>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/admin/assets/js/admin-common.js"></script>
+    <script src="/admin/assets/js/media.js"></script>
+  </body>
+</html>

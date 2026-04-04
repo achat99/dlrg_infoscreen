@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infoscreen</title>
+    <link rel="stylesheet" href="/screen/assets/screen.css" />
+  </head>
+  <body>
+    <div class="screen-shell">
+      <div class="bg-light"></div>
+      <div class="bg-diagonal-navy"></div>
+      <div class="bg-diagonal-magenta"></div>
+      <div class="top-bar"></div>
+
+      <header class="header">
+        <div>
+          <div class="header-title" id="eventName">DLRG Jugend</div>
+          <div class="header-subtitle" id="eventSubtitle"></div>
+        </div>
+        <div class="header-right">
+          <div class="connection-indicator" id="connectionIndicator" title="Verbindung"></div>
+          <div>
+            <div class="header-clock" id="clock"></div>
+            <div class="header-date-line" id="eventDate"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="slide-container" id="slideContainer"></main>
+      <div class="slide-indicators" id="indicators"></div>
+      <div class="progress-bar" id="progressBar"></div>
+
+      <div class="logo-area" id="logoArea">
+        <img id="logoImg" src="" alt="Logo" style="display:none;" />
+        <div class="logo-text" id="logoText">DLRG<br />Jugend</div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/screen/assets/screen.js"></script>
+  </body>
+</html>

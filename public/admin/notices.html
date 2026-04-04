@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hinweise</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="/admin/assets/css/admin.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="topbar"></div>
+    <main class="container py-4">
+      <div class="page-header">
+        <div>
+          <h1>Hinweise & Warnungen</h1>
+          <p>Aktive Meldungen werden sofort auf den Infoscreen synchronisiert.</p>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card"><div class="card-body">
+            <h2 class="h5 fw-bold mb-3">Hinweis anlegen</h2>
+            <form id="noticeForm" class="row g-3">
+              <input type="hidden" id="noticeId" />
+              <div class="col-md-6">
+                <label class="form-label">Typ</label>
+                <select class="form-select" id="noticeType"><option value="info">Info</option><option value="warnung">Warnung</option></select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Priorität</label>
+                <select class="form-select" id="noticePriority"><option value="niedrig">Niedrig</option><option value="normal" selected>Normal</option><option value="hoch">Hoch</option></select>
+              </div>
+              <div class="col-12"><label class="form-label">Titel</label><input class="form-control" id="noticeTitle" required /></div>
+              <div class="col-12"><label class="form-label">Text</label><textarea class="form-control" id="noticeText" rows="4"></textarea></div>
+              <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="noticeActive" checked /><label class="form-check-label" for="noticeActive">Aktiv</label></div>
+              <div class="col-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Speichern</button><button class="btn btn-outline-secondary" type="button" id="noticeCancel">Zurücksetzen</button></div>
+            </form>
+          </div></div>
+        </div>
+        <div class="col-lg-8">
+          <div class="card"><div class="card-body">
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead><tr><th>Typ</th><th>Titel</th><th>Priorität</th><th>Status</th><th></th></tr></thead>
+                <tbody id="noticeTableBody"></tbody>
+              </table>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    </main>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/admin/assets/js/admin-common.js"></script>
+    <script src="/admin/assets/js/notices.js"></script>
+  </body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Veranstaltung</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="/admin/assets/css/admin.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="topbar"></div>
+    <main class="container py-4">
+      <div class="page-header">
+        <div>
+          <h1>Veranstaltungseinstellungen</h1>
+          <p>Basisdaten und Logo für den Infoscreen.</p>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <div class="card"><div class="card-body">
+            <form id="settingsForm" class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Veranstaltungsname</label>
+                <input class="form-control" name="event_name" required />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Untertitel</label>
+                <input class="form-control" name="event_subtitle" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Datum</label>
+                <input class="form-control" name="event_date" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Slide-Dauer in Sekunden</label>
+                <input class="form-control" type="number" min="3" max="60" name="slide_duration" />
+              </div>
+              <div class="col-12">
+                <button class="btn btn-primary" type="submit">Speichern</button>
+              </div>
+            </form>
+          </div></div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card"><div class="card-body">
+            <div class="form-section-title">Logo</div>
+            <img id="logoPreview" class="img-fluid rounded border mb-3" alt="Logo" style="display:none; max-height: 180px; object-fit: contain;" />
+            <form id="logoForm" class="d-grid gap-3">
+              <input type="file" class="form-control" name="logo" accept="image/*" required />
+              <button class="btn btn-outline-primary" type="submit">Logo hochladen</button>
+            </form>
+          </div></div>
+        </div>
+      </div>
+    </main>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/admin/assets/js/admin-common.js"></script>
+    <script>
+      const settingsForm = document.getElementById('settingsForm');
+      const logoForm = document.getElementById('logoForm');
+      const logoPreview = document.getElementById('logoPreview');
+
+      window.loadPageData = async () => {
+        const settings = await AdminCommon.apiFetch('/api/settings');
+        for (const [key, value] of Object.entries(settings)) {
+          const input = settingsForm.querySelector(`[name="${key}"]`);
+          if (input) input.value = value ?? '';
+        }
+        if (settings.logo_path) {
+          logoPreview.src = settings.logo_path;
+          logoPreview.style.display = 'block';
+        }
+      };
+
+      settingsForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(settingsForm);
+        const body = Object.fromEntries(formData.entries());
+        await AdminCommon.apiFetch('/api/settings', { method: 'PUT', body });
+        AdminCommon.showToast('Einstellungen gespeichert');
+      });
+
+      logoForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(logoForm);
+        const result = await AdminCommon.apiFetch('/api/settings/logo', { method: 'POST', body: formData });
+        logoPreview.src = result.logoPath;
+        logoPreview.style.display = 'block';
+        AdminCommon.showToast('Logo hochgeladen');
+      });
+
+      AdminCommon.initPage('settings');
+    </script>
+  </body>
+</html>
