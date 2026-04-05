@@ -44,12 +44,12 @@ body {
 
 .bg-diagonal-navy {
   background: var(--navy);
-  clip-path: polygon(100% 0, 100% 100%, 48% 100%);
+  clip-path: polygon(97.2% 0, 100% 0, 100% 100%, 83.5% 100%);
 }
 
 .bg-diagonal-magenta {
   background: var(--magenta);
-  clip-path: polygon(44% 100%, 48.4% 100%, 100% 0%, 96.8% 0%);
+  clip-path: polygon(94.8% 0, 97.6% 0, 83.5% 100%, 78.5% 100%);
 }
 
 .top-bar {
@@ -66,7 +66,7 @@ body {
   position: absolute;
   top: 28px;
   left: 50px;
-  right: 50px;
+  right: 95px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -88,6 +88,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  margin-right: 50px;
 }
 
 .header-clock {
@@ -165,36 +166,40 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
 }
 
 .ov-heading,
 .notice-badge,
 .prog-category {
-  font-size: 14px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: 0.25em;
   font-weight: 800;
   color: var(--magenta);
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .ov-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 1100px;
+  max-width: 1180px;
 }
 
 .ov-row {
   display: grid;
-  grid-template-columns: 70px 130px 1fr 240px;
+  grid-template-columns: 76px 145px 1fr 250px;
   gap: 18px;
   padding: 16px 20px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.55);
+  font-size: 24px;
+  line-height: 1.2;
 }
 
 .ov-time {
+  font-size: 26px;
   font-weight: 800;
   color: var(--navy);
   font-style: italic;
