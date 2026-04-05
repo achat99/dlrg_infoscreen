@@ -81,6 +81,65 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
     res.json(getProgramItems(true));
   });
 
+  router.get('/import/template', (_req, res) => {
+    const workbook = XLSX.utils.book_new();
+    const demoRows = [
+      {
+        Tag: 'Freitag',
+        Uhrzeit: '18:00',
+        Titel: 'Anreise & Anmeldung',
+        Beschreibung: 'Check-in am Empfang und Ausgabe der Unterlagen',
+        Ort: 'Foyer',
+        Kategorie: 'Organisation',
+        'Icon (optional)': '🧭',
+        'Highlight (ja/nein)': 'ja',
+        'Sichtbar (ja/nein)': 'ja',
+      },
+      {
+        Tag: 'Samstag',
+        Uhrzeit: '09:30',
+        Titel: 'Begrüßung',
+        Beschreibung: 'Offizieller Start des Veranstaltungstages',
+        Ort: 'Hauptbühne',
+        Kategorie: 'Bühne',
+        'Icon (optional)': '🎤',
+        'Highlight (ja/nein)': 'nein',
+        'Sichtbar (ja/nein)': 'ja',
+      },
+      {
+        Tag: 'Samstag',
+        Uhrzeit: '14:00',
+        Titel: 'Rettungsstaffel',
+        Beschreibung: 'Wettkampf im Schwimmbecken',
+        Ort: 'Schwimmhalle',
+        Kategorie: 'Wettkampf',
+        'Icon (optional)': '🏊',
+        'Highlight (ja/nein)': 'ja',
+        'Sichtbar (ja/nein)': 'ja',
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(demoRows);
+    worksheet['!cols'] = [
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 28 },
+      { wch: 46 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 20 },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Programm');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="demo-programm-import.xlsx"');
+    return res.send(buffer);
+  });
+
   router.post('/import/preview', excelUpload, (req, res) => {
     if (!req.file?.buffer) {
       return res.status(400).json({ error: 'Bitte eine Excel-Datei auswählen' });

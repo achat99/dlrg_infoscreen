@@ -305,12 +305,17 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .logo-area img {
-  max-width: 180px;
-  max-height: 72px;
-  filter: brightness(0) invert(1);
+  display: block;
+  width: auto;
+  max-width: 260px;
+  max-height: 100px;
+  object-fit: contain;
 }
 
 .logo-text {

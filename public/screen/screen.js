@@ -22,20 +22,53 @@ function getDefaultDuration() {
   return Math.max(seconds, 3) * 1000;
 }
 
+function showFallbackLogo() {
+  const logoImg = byId('logoImg');
+  const logoText = byId('logoText');
+
+  logoImg.style.display = 'none';
+  logoText.style.display = 'block';
+}
+
+function updateLogo(logoPath) {
+  const logoImg = byId('logoImg');
+  const logoText = byId('logoText');
+  const normalizedPath = String(logoPath || '').trim();
+
+  if (!normalizedPath) {
+    logoImg.removeAttribute('src');
+    showFallbackLogo();
+    return;
+  }
+
+  logoImg.onload = () => {
+    logoImg.style.display = 'block';
+    logoText.style.display = 'none';
+  };
+
+  logoImg.onerror = () => {
+    logoImg.removeAttribute('src');
+    showFallbackLogo();
+  };
+
+  if (logoImg.getAttribute('src') !== normalizedPath) {
+    showFallbackLogo();
+    logoImg.src = normalizedPath;
+    return;
+  }
+
+  if (logoImg.complete && logoImg.naturalWidth > 0) {
+    logoImg.style.display = 'block';
+    logoText.style.display = 'none';
+  }
+}
+
 function updateHeader() {
   const settings = latestPayload?.settings || {};
   byId('eventName').textContent = settings.event_name || 'Herzlich Willkommen';
   byId('eventSubtitle').textContent = settings.event_subtitle || '';
   byId('eventDate').textContent = settings.event_date || '';
-
-  if (settings.logo_path) {
-    byId('logoImg').src = settings.logo_path;
-    byId('logoImg').style.display = 'block';
-    byId('logoText').style.display = 'none';
-  } else {
-    byId('logoImg').style.display = 'none';
-    byId('logoText').style.display = 'block';
-  }
+  updateLogo(settings.logo_path);
 }
 
 function overviewSlides(programItems) {
