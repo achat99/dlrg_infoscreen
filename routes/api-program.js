@@ -1,7 +1,7 @@
 const express = require('express');
 const XLSX = require('xlsx');
 const { requireAuth } = require('../auth');
-const { db, nowIso, toBooleanInt, getProgramItems } = require('../db');
+const { db, nowIso, toBooleanInt, getSettings, getProgramItems, normalizeProgramDateTimeValue, combineProgramDayTime } = require('../db');
 const { broadcastScreenUpdate } = require('../socket');
 
 function normalizeString(value) {
@@ -33,9 +33,20 @@ function parseBoolean(value, defaultValue = false) {
 }
 
 function normalizeImportedProgramItem(item = {}) {
+  const settings = getSettings();
+  const referenceDate = settings.event_date || '';
+
+  const rawStartAt = item.start_at || item.startAt || item.Start || item.Beginn || item['Beginn (Datum/Uhrzeit)'] || item['Beginn Datum/Uhrzeit'];
+  const rawEndAt = item.end_at || item.endAt || item.Ende || item.Bis || item['Ende (Datum/Uhrzeit)'] || item['Ende Datum/Uhrzeit'];
+  const legacyDay = normalizeString(item.day || item.Day || item.Tag || item.Datum);
+  const legacyTime = normalizeString(item.time || item.Time || item.Uhrzeit || item.Zeit);
+
+  const startAt = normalizeProgramDateTimeValue(rawStartAt) || combineProgramDayTime(legacyDay, legacyTime, referenceDate);
+  const endAt = normalizeProgramDateTimeValue(rawEndAt) || combineProgramDayTime(startAt ? startAt.slice(0, 10) : '', rawEndAt, startAt || referenceDate);
+
   return {
-    day: normalizeString(item.day || item.Day || item.Tag || item.Datum),
-    time: normalizeString(item.time || item.Time || item.Uhrzeit || item.Zeit),
+    start_at: startAt,
+    end_at: endAt,
     title: normalizeString(item.title || item.Title || item.Titel || item.Programmpunkt) || 'Ohne Titel',
     description: normalizeString(item.description || item.Description || item.Beschreibung || item.Details),
     location: normalizeString(item.location || item.Location || item.Ort || item['Ort / Bühne'] || item.Bühne),
@@ -46,8 +57,20 @@ function normalizeImportedProgramItem(item = {}) {
   };
 }
 
+function validateProgramItem(item = {}) {
+  if (!item.start_at) {
+    return 'Bitte einen gültigen Beginn mit Datum und Uhrzeit angeben';
+  }
+
+  if (item.end_at && item.end_at < item.start_at) {
+    return 'Das Ende darf nicht vor dem Beginn liegen';
+  }
+
+  return '';
+}
+
 function buildProgramSignature(item) {
-  return [item.day, item.time, item.title, item.location]
+  return [item.start_at, item.end_at, item.title, item.location]
     .map((value) => normalizeString(value).toLowerCase())
     .join('|');
 }
@@ -67,7 +90,7 @@ function parseWorkbook(buffer) {
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
   const items = rows
     .map((row) => normalizeImportedProgramItem(row))
-    .filter((item) => item.title || item.time || item.location || item.description);
+    .filter((item) => item.title || item.start_at || item.end_at || item.location || item.description);
 
   return { sheetName, items };
 }
@@ -85,8 +108,8 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
     const workbook = XLSX.utils.book_new();
     const demoRows = [
       {
-        Tag: 'Freitag',
-        Uhrzeit: '18:00',
+        Beginn: '25.04.2026 18:00',
+        Ende: '25.04.2026 19:00',
         Titel: 'Anreise & Anmeldung',
         Beschreibung: 'Check-in am Empfang und Ausgabe der Unterlagen',
         Ort: 'Foyer',
@@ -96,8 +119,8 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
         'Sichtbar (ja/nein)': 'ja',
       },
       {
-        Tag: 'Samstag',
-        Uhrzeit: '09:30',
+        Beginn: '26.04.2026 09:30',
+        Ende: '26.04.2026 10:00',
         Titel: 'Begrüßung',
         Beschreibung: 'Offizieller Start des Veranstaltungstages',
         Ort: 'Hauptbühne',
@@ -107,8 +130,8 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
         'Sichtbar (ja/nein)': 'ja',
       },
       {
-        Tag: 'Samstag',
-        Uhrzeit: '14:00',
+        Beginn: '26.04.2026 14:00',
+        Ende: '26.04.2026 15:30',
         Titel: 'Rettungsstaffel',
         Beschreibung: 'Wettkampf im Schwimmbecken',
         Ort: 'Schwimmhalle',
@@ -121,8 +144,8 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
 
     const worksheet = XLSX.utils.json_to_sheet(demoRows);
     worksheet['!cols'] = [
-      { wch: 14 },
-      { wch: 10 },
+      { wch: 20 },
+      { wch: 20 },
       { wch: 28 },
       { wch: 46 },
       { wch: 18 },
@@ -152,11 +175,13 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
 
     const existingBySignature = getExistingSignatureMap();
     const previewItems = items.map((item, index) => {
-      const existingItem = existingBySignature.get(buildProgramSignature(item));
+      const validationError = validateProgramItem(item);
+      const existingItem = validationError ? null : existingBySignature.get(buildProgramSignature(item));
       return {
         ...item,
         importIndex: index + 1,
-        status: existingItem ? 'existing' : 'new',
+        status: validationError ? 'invalid' : existingItem ? 'existing' : 'new',
+        validationError,
         existingId: existingItem?.id ?? null,
       };
     });
@@ -167,6 +192,7 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
       totalCount: previewItems.length,
       newCount: previewItems.filter((item) => item.status === 'new').length,
       existingCount: previewItems.filter((item) => item.status === 'existing').length,
+      invalidCount: previewItems.filter((item) => item.status === 'invalid').length,
       items: previewItems,
     });
   });
@@ -178,21 +204,25 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
     }
 
     const insertStmt = db.prepare(`
-      INSERT INTO program_items (time, title, description, location, category, icon, day, highlight, visible, sort_order, created_at, updated_at)
-      VALUES (@time, @title, @description, @location, @category, @icon, @day, @highlight, @visible, @sort_order, @created_at, @updated_at)
+      INSERT INTO program_items (start_at, end_at, title, description, location, category, icon, highlight, visible, sort_order, created_at, updated_at)
+      VALUES (@start_at, @end_at, @title, @description, @location, @category, @icon, @highlight, @visible, @sort_order, @created_at, @updated_at)
     `);
 
     const importItems = db.transaction((items) => {
       const existingBySignature = getExistingSignatureMap();
-      let nextSortOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextSortOrder FROM program_items').get().nextSortOrder;
       const insertedIds = [];
       let importedCount = 0;
       let skippedCount = 0;
 
       items.forEach((rawItem) => {
         const item = normalizeImportedProgramItem(rawItem);
-        const signature = buildProgramSignature(item);
+        const validationError = validateProgramItem(item);
+        if (validationError) {
+          skippedCount += 1;
+          return;
+        }
 
+        const signature = buildProgramSignature(item);
         if (existingBySignature.has(signature)) {
           skippedCount += 1;
           return;
@@ -200,16 +230,16 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
 
         const timestamp = nowIso();
         const result = insertStmt.run({
-          time: item.time,
+          start_at: item.start_at,
+          end_at: item.end_at,
           title: item.title,
           description: item.description,
           location: item.location,
           category: item.category,
           icon: item.icon,
-          day: item.day,
           highlight: toBooleanInt(item.highlight),
           visible: toBooleanInt(item.visible),
-          sort_order: nextSortOrder++,
+          sort_order: 0,
           created_at: timestamp,
           updated_at: timestamp,
         });
@@ -230,24 +260,29 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
   });
 
   router.post('/', (req, res) => {
+    const item = normalizeImportedProgramItem(req.body);
+    const validationError = validateProgramItem(item);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
     const timestamp = nowIso();
-    const nextSortOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextSortOrder FROM program_items').get().nextSortOrder;
     const stmt = db.prepare(`
-      INSERT INTO program_items (time, title, description, location, category, icon, day, highlight, visible, sort_order, created_at, updated_at)
-      VALUES (@time, @title, @description, @location, @category, @icon, @day, @highlight, @visible, @sort_order, @created_at, @updated_at)
+      INSERT INTO program_items (start_at, end_at, title, description, location, category, icon, highlight, visible, sort_order, created_at, updated_at)
+      VALUES (@start_at, @end_at, @title, @description, @location, @category, @icon, @highlight, @visible, @sort_order, @created_at, @updated_at)
     `);
 
     const result = stmt.run({
-      time: req.body?.time || '',
-      title: req.body?.title || 'Neuer Programmpunkt',
-      description: req.body?.description || '',
-      location: req.body?.location || '',
-      category: req.body?.category || '',
-      icon: req.body?.icon || '',
-      day: req.body?.day || '',
-      highlight: toBooleanInt(req.body?.highlight),
+      start_at: item.start_at,
+      end_at: item.end_at,
+      title: item.title || 'Neuer Programmpunkt',
+      description: item.description || '',
+      location: item.location || '',
+      category: item.category || '',
+      icon: item.icon || '',
+      highlight: toBooleanInt(item.highlight),
       visible: req.body?.visible === false ? 0 : 1,
-      sort_order: req.body?.sort_order ?? nextSortOrder,
+      sort_order: 0,
       created_at: timestamp,
       updated_at: timestamp,
     });
@@ -290,15 +325,21 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
       return res.status(404).json({ error: 'Programmpunkt nicht gefunden' });
     }
 
+    const nextItem = normalizeImportedProgramItem({ ...existing, ...req.body });
+    const validationError = validateProgramItem(nextItem);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
     db.prepare(`
       UPDATE program_items
-      SET time = @time,
+      SET start_at = @start_at,
+          end_at = @end_at,
           title = @title,
           description = @description,
           location = @location,
           category = @category,
           icon = @icon,
-          day = @day,
           highlight = @highlight,
           visible = @visible,
           sort_order = @sort_order,
@@ -306,16 +347,16 @@ module.exports = function createProgramRouter({ excelUpload } = {}) {
       WHERE id = @id
     `).run({
       id: Number(req.params.id),
-      time: req.body?.time ?? existing.time,
-      title: req.body?.title ?? existing.title,
-      description: req.body?.description ?? existing.description,
-      location: req.body?.location ?? existing.location,
-      category: req.body?.category ?? existing.category,
-      icon: req.body?.icon ?? existing.icon,
-      day: req.body?.day ?? existing.day,
+      start_at: nextItem.start_at,
+      end_at: nextItem.end_at,
+      title: nextItem.title,
+      description: nextItem.description,
+      location: nextItem.location,
+      category: nextItem.category,
+      icon: nextItem.icon,
       highlight: req.body?.highlight == null ? existing.highlight : toBooleanInt(req.body.highlight),
       visible: req.body?.visible == null ? existing.visible : toBooleanInt(req.body.visible),
-      sort_order: req.body?.sort_order ?? existing.sort_order,
+      sort_order: 0,
       updated_at: nowIso(),
     });
 

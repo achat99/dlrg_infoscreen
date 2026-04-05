@@ -1,16 +1,40 @@
 let currentProgramItems = [];
 let currentImportPreview = [];
 
+function formatDateTimeForInput(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized ? normalized.replace(' ', 'T').slice(0, 16) : '';
+}
+
+function formatDateTimeDisplay(value) {
+  const normalized = formatDateTimeForInput(value);
+  if (!normalized) {
+    return '—';
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return normalized;
+  }
+
+  return date.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function resetProgramForm() {
   document.getElementById('programId').value = '';
-  document.getElementById('programDay').value = '';
-  document.getElementById('programTime').value = '';
+  document.getElementById('programStartAt').value = '';
+  document.getElementById('programEndAt').value = '';
   document.getElementById('programTitle').value = '';
   document.getElementById('programDescription').value = '';
   document.getElementById('programLocation').value = '';
   document.getElementById('programCategory').value = '';
   document.getElementById('programIcon').value = '';
-  document.getElementById('programSort').value = '';
   document.getElementById('programHighlight').checked = false;
   document.getElementById('programVisible').checked = true;
 }
@@ -29,22 +53,28 @@ function renderImportPreview(result) {
     <strong>${result.totalCount}</strong> Einträge geprüft ·
     <span class="text-success"><strong>${result.newCount}</strong> neu</span> ·
     <span class="text-secondary"><strong>${result.existingCount}</strong> bereits vorhanden</span>
+    ${result.invalidCount ? `· <span class="text-danger"><strong>${result.invalidCount}</strong> ungültig</span>` : ''}
     <span class="ms-2">(Sheet: <code>${AdminCommon.escapeHtml(result.sheetName || 'Programm')}</code>)</span>
   `;
 
   const tbody = document.getElementById('programImportPreviewBody');
-  tbody.innerHTML = currentImportPreview.map((item) => `
-    <tr>
-      <td><span class="badge ${item.status === 'new' ? 'text-bg-success' : 'text-bg-secondary'}">${item.status === 'new' ? 'neu' : 'vorhanden'}</span></td>
-      <td>${AdminCommon.escapeHtml(item.day || '')}</td>
-      <td>${AdminCommon.escapeHtml(item.time || '')}</td>
-      <td>
-        <div class="fw-semibold">${AdminCommon.escapeHtml(item.title || '')}</div>
-        <div class="small text-secondary">${AdminCommon.escapeHtml(item.category || '')}</div>
-      </td>
-      <td>${AdminCommon.escapeHtml(item.location || '')}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = currentImportPreview.map((item) => {
+    const badgeClass = item.status === 'new' ? 'text-bg-success' : item.status === 'invalid' ? 'text-bg-danger' : 'text-bg-secondary';
+    const badgeText = item.status === 'new' ? 'neu' : item.status === 'invalid' ? 'ungültig' : 'vorhanden';
+
+    return `
+      <tr>
+        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+        <td>${AdminCommon.escapeHtml(formatDateTimeDisplay(item.start_at))}</td>
+        <td>${AdminCommon.escapeHtml(formatDateTimeDisplay(item.end_at))}</td>
+        <td>
+          <div class="fw-semibold">${AdminCommon.escapeHtml(item.title || '')}</div>
+          <div class="small text-secondary">${AdminCommon.escapeHtml(item.validationError || item.category || '')}</div>
+        </td>
+        <td>${AdminCommon.escapeHtml(item.location || '')}</td>
+      </tr>
+    `;
+  }).join('');
 
   document.getElementById('programImportPreviewWrap').classList.toggle('d-none', currentImportPreview.length === 0);
   document.getElementById('programImportConfirm').disabled = !(result.newCount > 0);
@@ -54,7 +84,10 @@ function renderProgramTable() {
   const tbody = document.getElementById('programTableBody');
   tbody.innerHTML = currentProgramItems.map((item) => `
     <tr>
-      <td><strong>${AdminCommon.escapeHtml(item.time)}</strong><div class="small text-secondary">${AdminCommon.escapeHtml(item.day || '')}</div></td>
+      <td>
+        <div class="fw-semibold">${AdminCommon.escapeHtml(formatDateTimeDisplay(item.start_at))}</div>
+        <div class="small text-secondary">Ende: ${AdminCommon.escapeHtml(formatDateTimeDisplay(item.end_at))}</div>
+      </td>
       <td>
         <div class="fw-semibold">${AdminCommon.escapeHtml(item.title)}</div>
         <div class="small text-secondary">${AdminCommon.escapeHtml(item.category || '')}</div>
@@ -90,17 +123,26 @@ document.addEventListener('DOMContentLoaded', () => {
     event.preventDefault();
     const id = document.getElementById('programId').value;
     const payload = {
-      day: document.getElementById('programDay').value,
-      time: document.getElementById('programTime').value,
+      start_at: document.getElementById('programStartAt').value,
+      end_at: document.getElementById('programEndAt').value,
       title: document.getElementById('programTitle').value,
       description: document.getElementById('programDescription').value,
       location: document.getElementById('programLocation').value,
       category: document.getElementById('programCategory').value,
       icon: document.getElementById('programIcon').value,
-      sort_order: Number(document.getElementById('programSort').value) || undefined,
       highlight: document.getElementById('programHighlight').checked,
       visible: document.getElementById('programVisible').checked,
     };
+
+    if (!payload.start_at) {
+      AdminCommon.showToast('Bitte einen Beginn mit Datum und Uhrzeit angeben', 'danger');
+      return;
+    }
+
+    if (payload.end_at && payload.end_at < payload.start_at) {
+      AdminCommon.showToast('Das Ende darf nicht vor dem Beginn liegen', 'danger');
+      return;
+    }
 
     await AdminCommon.apiFetch(id ? `/api/program/${id}` : '/api/program', {
       method: id ? 'PUT' : 'POST',
@@ -161,14 +203,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (button.dataset.action === 'edit') {
       document.getElementById('programId').value = item.id;
-      document.getElementById('programDay').value = item.day || '';
-      document.getElementById('programTime').value = item.time || '';
+      document.getElementById('programStartAt').value = formatDateTimeForInput(item.start_at);
+      document.getElementById('programEndAt').value = formatDateTimeForInput(item.end_at);
       document.getElementById('programTitle').value = item.title || '';
       document.getElementById('programDescription').value = item.description || '';
       document.getElementById('programLocation').value = item.location || '';
       document.getElementById('programCategory').value = item.category || '';
       document.getElementById('programIcon').value = item.icon || '';
-      document.getElementById('programSort').value = item.sort_order || '';
       document.getElementById('programHighlight').checked = Boolean(item.highlight);
       document.getElementById('programVisible').checked = Boolean(item.visible);
       return;

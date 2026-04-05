@@ -50,13 +50,13 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS program_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    time TEXT NOT NULL DEFAULT '',
+    start_at TEXT NOT NULL DEFAULT '',
+    end_at TEXT DEFAULT '',
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     location TEXT DEFAULT '',
     category TEXT DEFAULT '',
     icon TEXT DEFAULT '',
-    day TEXT DEFAULT '',
     highlight INTEGER DEFAULT 0,
     visible INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
@@ -133,6 +133,292 @@ function toBooleanInt(value) {
   return value ? 1 : 0;
 }
 
+function padNumber(value) {
+  return String(value).padStart(2, '0');
+}
+
+function toLocalDateTimeString(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}T${padNumber(date.getHours())}:${padNumber(date.getMinutes())}`;
+}
+
+function normalizeTimeValue(value) {
+  if (value == null || value === '') {
+    return '';
+  }
+
+  if (value instanceof Date) {
+    return `${padNumber(value.getHours())}:${padNumber(value.getMinutes())}`;
+  }
+
+  const match = String(value).trim().match(/(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return '';
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours > 23 || minutes > 59) {
+    return '';
+  }
+
+  return `${padNumber(hours)}:${padNumber(minutes)}`;
+}
+
+function normalizeProgramDateTimeValue(value) {
+  if (value == null || value === '') {
+    return '';
+  }
+
+  if (value instanceof Date) {
+    return toLocalDateTimeString(value);
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const excelDate = new Date(Math.round((value - 25569) * 86400 * 1000));
+    return Number.isNaN(excelDate.getTime()) ? '' : toLocalDateTimeString(excelDate);
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return '';
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)) {
+    return text;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/.test(text)) {
+    return text.slice(0, 16).replace(' ', 'T');
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return `${text}T00:00`;
+  }
+
+  const germanDateTime = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\s+|,?\s*)(\d{1,2}):(\d{2})$/);
+  if (germanDateTime) {
+    const [, day, month, year, hours, minutes] = germanDateTime;
+    const normalizedYear = year.length === 2 ? `20${year}` : year;
+    return `${normalizedYear}-${padNumber(month)}-${padNumber(day)}T${padNumber(hours)}:${padNumber(minutes)}`;
+  }
+
+  const germanDateOnly = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  if (germanDateOnly) {
+    const [, day, month, year] = germanDateOnly;
+    const normalizedYear = year.length === 2 ? `20${year}` : year;
+    return `${normalizedYear}-${padNumber(month)}-${padNumber(day)}T00:00`;
+  }
+
+  return '';
+}
+
+function resolveDatePart(value, referenceDate = '') {
+  if (value == null || value === '') {
+    return '';
+  }
+
+  const directDateTime = normalizeProgramDateTimeValue(value);
+  if (directDateTime) {
+    return directDateTime.slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return '';
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const germanDate = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})?\.?$/);
+  if (germanDate) {
+    const [, day, month, year] = germanDate;
+    const reference = normalizeProgramDateTimeValue(referenceDate)
+      ? new Date(normalizeProgramDateTimeValue(referenceDate))
+      : new Date();
+    const normalizedYear = year ? (year.length === 2 ? `20${year}` : year) : String(reference.getFullYear());
+    return `${normalizedYear}-${padNumber(month)}-${padNumber(day)}`;
+  }
+
+  const weekdayMap = {
+    montag: 1,
+    dienstag: 2,
+    mittwoch: 3,
+    donnerstag: 4,
+    freitag: 5,
+    samstag: 6,
+    sonntag: 0,
+  };
+
+  const weekdayKey = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!(weekdayKey in weekdayMap)) {
+    return '';
+  }
+
+  const anchorValue = normalizeProgramDateTimeValue(referenceDate);
+  const anchorDate = anchorValue ? new Date(anchorValue) : new Date();
+  const baseDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate());
+  const targetDay = weekdayMap[weekdayKey];
+  const diff = (targetDay - baseDate.getDay() + 7) % 7;
+  baseDate.setDate(baseDate.getDate() + diff);
+  return `${baseDate.getFullYear()}-${padNumber(baseDate.getMonth() + 1)}-${padNumber(baseDate.getDate())}`;
+}
+
+function combineProgramDayTime(dayValue, timeValue, referenceDate = '') {
+  const directDateTime = normalizeProgramDateTimeValue(dayValue) || normalizeProgramDateTimeValue(timeValue);
+  if (directDateTime) {
+    const normalizedTime = normalizeTimeValue(timeValue);
+    if (normalizedTime && normalizeProgramDateTimeValue(dayValue)) {
+      return `${normalizeProgramDateTimeValue(dayValue).slice(0, 10)}T${normalizedTime}`;
+    }
+    return directDateTime;
+  }
+
+  const datePart = resolveDatePart(dayValue, referenceDate);
+  const timePart = normalizeTimeValue(timeValue) || '00:00';
+  return datePart ? `${datePart}T${timePart}` : '';
+}
+
+function formatProgramDateLabel(startAt) {
+  const normalized = normalizeProgramDateTimeValue(startAt);
+  if (!normalized) {
+    return '';
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatProgramTimeLabel(startAt, endAt) {
+  const normalizedStart = normalizeProgramDateTimeValue(startAt);
+  if (!normalizedStart) {
+    return '';
+  }
+
+  const startDate = new Date(normalizedStart);
+  if (Number.isNaN(startDate.getTime())) {
+    return '';
+  }
+
+  const startText = startDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const normalizedEnd = normalizeProgramDateTimeValue(endAt);
+  if (!normalizedEnd) {
+    return startText;
+  }
+
+  const endDate = new Date(normalizedEnd);
+  if (Number.isNaN(endDate.getTime())) {
+    return startText;
+  }
+
+  const endText = endDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${startText}–${endText}`;
+}
+
+function decorateProgramItem(item, referenceDate = '') {
+  const startAt = normalizeProgramDateTimeValue(item.start_at) || combineProgramDayTime(item.day, item.time, referenceDate);
+  const endAt = normalizeProgramDateTimeValue(item.end_at);
+
+  return {
+    ...item,
+    start_at: startAt,
+    end_at: endAt,
+    day: formatProgramDateLabel(startAt),
+    time: formatProgramTimeLabel(startAt, endAt),
+  };
+}
+
+function ensureProgramItemsSchema() {
+  const columns = db.prepare('PRAGMA table_info(program_items)').all().map((column) => column.name);
+  if (columns.includes('start_at') && columns.includes('end_at') && !columns.includes('day') && !columns.includes('time')) {
+    return;
+  }
+
+  const settings = getSettings();
+  const referenceDate = settings.event_date || '';
+  const legacyRows = db.prepare('SELECT * FROM program_items').all();
+
+  db.exec(`
+    DROP TABLE IF EXISTS program_items_migrated;
+
+    CREATE TABLE program_items_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      start_at TEXT NOT NULL DEFAULT '',
+      end_at TEXT DEFAULT '',
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      location TEXT DEFAULT '',
+      category TEXT DEFAULT '',
+      icon TEXT DEFAULT '',
+      highlight INTEGER DEFAULT 0,
+      visible INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  const insertMigratedItem = db.prepare(`
+    INSERT INTO program_items_migrated (
+      id, start_at, end_at, title, description, location, category, icon, highlight, visible, sort_order, created_at, updated_at
+    ) VALUES (
+      @id, @start_at, @end_at, @title, @description, @location, @category, @icon, @highlight, @visible, @sort_order, @created_at, @updated_at
+    )
+  `);
+
+  const tx = db.transaction((items) => {
+    items.forEach((item) => insertMigratedItem.run(item));
+  });
+
+  tx(
+    legacyRows.map((row) => ({
+      id: row.id,
+      start_at: normalizeProgramDateTimeValue(row.start_at) || combineProgramDayTime(row.day, row.time, referenceDate),
+      end_at: normalizeProgramDateTimeValue(row.end_at),
+      title: row.title || 'Neuer Programmpunkt',
+      description: row.description || '',
+      location: row.location || '',
+      category: row.category || '',
+      icon: row.icon || '',
+      highlight: row.highlight || 0,
+      visible: row.visible == null ? 1 : row.visible,
+      sort_order: row.sort_order || 0,
+      created_at: row.created_at || nowIso(),
+      updated_at: row.updated_at || row.created_at || nowIso(),
+    }))
+  );
+
+  db.exec(`
+    DROP TABLE program_items;
+    ALTER TABLE program_items_migrated RENAME TO program_items;
+  `);
+}
+
+ensureProgramItemsSchema();
+db.prepare('UPDATE program_items SET sort_order = 0 WHERE COALESCE(sort_order, 0) != 0').run();
+
 function getSettings() {
   const rows = db.prepare('SELECT key, value FROM event_settings').all();
   return rows.reduce((acc, row) => {
@@ -158,13 +444,89 @@ function updateSettings(payload) {
   return getSettings();
 }
 
-function getProgramItems(includeHidden = true) {
+function withEffectiveProgramEnd(items) {
+  return items.map((item, index) => {
+    const startAt = normalizeProgramDateTimeValue(item.start_at);
+    const explicitEndAt = normalizeProgramDateTimeValue(item.end_at);
+    const nextStartAt = normalizeProgramDateTimeValue(items[index + 1]?.start_at);
+
+    let effectiveEndAt = explicitEndAt;
+    if (!effectiveEndAt && startAt) {
+      if (nextStartAt && nextStartAt.slice(0, 10) === startAt.slice(0, 10)) {
+        effectiveEndAt = nextStartAt;
+      } else {
+        const fallbackEnd = new Date(startAt);
+        fallbackEnd.setMinutes(fallbackEnd.getMinutes() + 90);
+        effectiveEndAt = toLocalDateTimeString(fallbackEnd);
+      }
+    }
+
+    return {
+      ...item,
+      effective_end_at: effectiveEndAt || '',
+    };
+  });
+}
+
+function isProgramItemOnCurrentDay(item, now = new Date()) {
+  const startAt = normalizeProgramDateTimeValue(item.start_at);
+  if (!startAt) {
+    return true;
+  }
+
+  const effectiveEndAt = normalizeProgramDateTimeValue(item.effective_end_at || item.end_at) || startAt;
+  const startDate = new Date(startAt);
+  const endDate = new Date(effectiveEndAt);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return true;
+  }
+
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const nextDayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return startDate < nextDayStart && endDate >= dayStart;
+}
+
+function isCurrentOrFutureProgramItem(item, now = new Date()) {
+  const startAt = normalizeProgramDateTimeValue(item.start_at);
+  if (!startAt) {
+    return true;
+  }
+
+  const effectiveEndAt = normalizeProgramDateTimeValue(item.effective_end_at || item.end_at) || startAt;
+  const endDate = new Date(effectiveEndAt);
+  if (Number.isNaN(endDate.getTime())) {
+    return true;
+  }
+
+  return endDate >= now;
+}
+
+function getProgramItems(includeHidden = true, options = {}) {
+  const { currentAndFutureOnly = false, currentDayOnly = false } = options;
   const whereClause = includeHidden ? '' : 'WHERE visible = 1';
-  return db
+  const referenceDate = getSettings().event_date || '';
+
+  let items = db
     .prepare(
-      `SELECT * FROM program_items ${whereClause} ORDER BY COALESCE(day, ''), sort_order ASC, time ASC, id ASC`
+      `SELECT * FROM program_items ${whereClause}
+       ORDER BY COALESCE(start_at, '') ASC,
+                COALESCE(end_at, '') ASC,
+                id ASC`
     )
-    .all();
+    .all()
+    .map((item) => decorateProgramItem(item, referenceDate));
+
+  items = withEffectiveProgramEnd(items);
+
+  if (currentDayOnly) {
+    items = items.filter((item) => isProgramItemOnCurrentDay(item));
+  }
+
+  if (currentAndFutureOnly) {
+    items = items.filter((item) => isCurrentOrFutureProgramItem(item));
+  }
+
+  return items;
 }
 
 function getNotices(includeInactive = true) {
@@ -190,11 +552,11 @@ function getCustomSlides(includeInactive = true) {
     .all();
 }
 
-function buildAutoQueue({ persist = false } = {}) {
+function buildAutoQueue({ persist = false, currentAndFutureOnly = false, currentDayOnly = false } = {}) {
   const items = [];
   let sortOrder = 1;
 
-  const programItems = getProgramItems(false);
+  const programItems = getProgramItems(false, { currentAndFutureOnly, currentDayOnly });
   const highlightedProgram = programItems.filter((item) => item.highlight === 1);
   const notices = getNotices(false);
   const mediaItems = getMedia(false);
@@ -246,7 +608,9 @@ function buildAutoQueue({ persist = false } = {}) {
   return items;
 }
 
-function getQueue(includeDisabled = true) {
+function getQueue(includeDisabled = true, options = {}) {
+  const { currentAndFutureOnly = false, currentDayOnly = false } = options;
+
   let rows = db
     .prepare(
       `SELECT * FROM slide_queue ${includeDisabled ? '' : 'WHERE enabled = 1'} ORDER BY sort_order ASC, id ASC`
@@ -254,7 +618,7 @@ function getQueue(includeDisabled = true) {
     .all();
 
   if (!rows.length && !includeDisabled) {
-    rows = buildAutoQueue();
+    rows = buildAutoQueue({ currentAndFutureOnly, currentDayOnly });
   }
 
   return rows;
@@ -262,14 +626,27 @@ function getQueue(includeDisabled = true) {
 
 function getPublicScreenData() {
   const settings = getSettings();
+  const programItems = getProgramItems(false, { currentAndFutureOnly: true, currentDayOnly: true });
+  const allowedProgramIds = new Set(programItems.map((item) => Number(item.id)));
+  const queue = getQueue(false, { currentAndFutureOnly: true, currentDayOnly: true }).filter((item) => {
+    if (item.slide_type === 'overview') {
+      return programItems.length > 0;
+    }
+
+    if (item.slide_type === 'program') {
+      return allowedProgramIds.has(Number(item.reference_id));
+    }
+
+    return true;
+  });
 
   return {
     settings,
-    programItems: getProgramItems(false),
+    programItems,
     notices: getNotices(false),
     media: getMedia(false),
     customSlides: getCustomSlides(false),
-    queue: getQueue(false),
+    queue,
     generatedAt: nowIso(),
   };
 }
@@ -287,6 +664,8 @@ module.exports = {
   db,
   nowIso,
   toBooleanInt,
+  normalizeProgramDateTimeValue,
+  combineProgramDayTime,
   getSettings,
   updateSettings,
   getProgramItems,

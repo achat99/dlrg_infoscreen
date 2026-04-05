@@ -3,6 +3,7 @@ let slides = [];
 let currentSlideIndex = 0;
 let slideTimer = null;
 let clockTimer = null;
+let programRefreshTimer = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -15,6 +16,102 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function formatProgramDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatProgramTimeRange(startAt, endAt, fallback = '') {
+  const startDate = startAt ? new Date(startAt) : null;
+  if (!startDate || Number.isNaN(startDate.getTime())) {
+    return fallback || '';
+  }
+
+  const startText = startDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const endDate = endAt ? new Date(endAt) : null;
+  if (!endDate || Number.isNaN(endDate.getTime())) {
+    return startText;
+  }
+
+  const endText = endDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${startText}–${endText}`;
+}
+
+function isProgramItemOnCurrentDay(item, now = new Date()) {
+  const startDate = item?.start_at ? new Date(item.start_at) : null;
+  if (!startDate || Number.isNaN(startDate.getTime())) {
+    return true;
+  }
+
+  const effectiveEndValue = item?.effective_end_at || item?.end_at;
+  const endDate = effectiveEndValue ? new Date(effectiveEndValue) : new Date(startDate.getTime() + 90 * 60 * 1000);
+  if (!endDate || Number.isNaN(endDate.getTime())) {
+    return true;
+  }
+
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const nextDayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return startDate < nextDayStart && endDate >= dayStart;
+}
+
+function isCurrentOrFutureProgramItem(item, now = new Date()) {
+  const startDate = item?.start_at ? new Date(item.start_at) : null;
+  if (!startDate || Number.isNaN(startDate.getTime())) {
+    return true;
+  }
+
+  const effectiveEndValue = item?.effective_end_at || item?.end_at;
+  const endDate = effectiveEndValue ? new Date(effectiveEndValue) : new Date(startDate.getTime() + 90 * 60 * 1000);
+  if (!endDate || Number.isNaN(endDate.getTime())) {
+    return true;
+  }
+
+  return endDate >= now;
+}
+
+function getRenderablePayload(payload = {}) {
+  const programItems = (payload.programItems || []).filter((item) => isProgramItemOnCurrentDay(item) && isCurrentOrFutureProgramItem(item));
+  const allowedProgramIds = new Set(programItems.map((item) => Number(item.id)));
+  const queue = Array.isArray(payload.queue)
+    ? payload.queue.filter((item) => item.enabled !== 0).filter((item) => {
+        if (item.slide_type === 'overview') {
+          return programItems.length > 0;
+        }
+        if (item.slide_type === 'program') {
+          return allowedProgramIds.has(Number(item.reference_id));
+        }
+        return true;
+      })
+    : [];
+
+  return {
+    ...payload,
+    programItems,
+    queue,
+  };
 }
 
 function getDefaultDuration() {
@@ -118,19 +215,20 @@ function buildSlideFromQueueItem(queueItem, data) {
 }
 
 function buildSlides(data) {
-  const queue = Array.isArray(data.queue) && data.queue.length ? data.queue.filter((item) => item.enabled !== 0) : [];
+  const renderData = getRenderablePayload(data);
+  const queue = renderData.queue || [];
   const baseSlides = [];
 
   if (queue.length) {
     queue.forEach((queueItem) => {
-      baseSlides.push(...buildSlideFromQueueItem(queueItem, data));
+      baseSlides.push(...buildSlideFromQueueItem(queueItem, renderData));
     });
 
     queue
       .filter((item) => Number(item.repeat_every) > 0)
       .forEach((queueItem) => {
         const interval = Number(queueItem.repeat_every);
-        const extraSlides = buildSlideFromQueueItem(queueItem, data);
+        const extraSlides = buildSlideFromQueueItem(queueItem, renderData);
         if (!extraSlides.length || interval <= 0) return;
 
         for (let index = interval; index < baseSlides.length; index += interval + 1) {
@@ -141,8 +239,8 @@ function buildSlides(data) {
 
   if (!baseSlides.length) {
     baseSlides.push({ type: 'welcome', duration: getDefaultDuration() });
-    baseSlides.push(...overviewSlides(data.programItems || []));
-    (data.notices || []).forEach((item) => baseSlides.push({ type: 'notice', data: item, duration: getDefaultDuration() }));
+    baseSlides.push(...overviewSlides(renderData.programItems || []));
+    (renderData.notices || []).forEach((item) => baseSlides.push({ type: 'notice', data: item, duration: getDefaultDuration() }));
   }
 
   slides = baseSlides;
@@ -164,14 +262,17 @@ function renderSlide(slide) {
       <section class="slide overview-slide">
         <div class="ov-heading">Programmübersicht${pageText}</div>
         <div class="ov-list">
-          ${slide.items.map((item) => `
+          ${slide.items.map((item) => {
+            const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
+            return `
             <div class="ov-row">
               <div>${escapeHtml(item.icon || '')}</div>
-              <div class="ov-time">${escapeHtml(item.time)}</div>
+              <div class="ov-time">${escapeHtml(timeLabel)}</div>
               <div><strong>${escapeHtml(item.title)}</strong></div>
               <div>${escapeHtml(item.location || '')}</div>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </section>
     `;
@@ -179,11 +280,14 @@ function renderSlide(slide) {
 
   if (slide.type === 'program') {
     const item = slide.data;
+    const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
+    const locationLabel = [formatProgramDate(item.start_at), item.location || ''].filter(Boolean).join(' · ');
+
     return `
       <section class="slide program-slide">
         <div>
-          <div class="prog-time">${escapeHtml(item.time)}</div>
-          <div class="prog-location">${escapeHtml(item.location || '')}</div>
+          <div class="prog-time">${escapeHtml(timeLabel)}</div>
+          <div class="prog-location">${escapeHtml(locationLabel || item.location || '')}</div>
         </div>
         <div class="prog-separator"></div>
         <div>
@@ -287,12 +391,13 @@ function showSlide(index) {
   scheduleNext();
 }
 
-function applyData(payload) {
+function applyData(payload, preserveCurrentSlide = false) {
   latestPayload = payload;
   updateHeader();
   buildSlides(payload);
   renderSlides();
-  showSlide(0);
+  const nextIndex = preserveCurrentSlide ? Math.min(currentSlideIndex, Math.max(slides.length - 1, 0)) : 0;
+  showSlide(nextIndex);
 }
 
 function buildPreviewSlide(payload) {
@@ -342,6 +447,15 @@ function startClock() {
   clockTimer = setInterval(tick, 1000);
 }
 
+function startProgramRefresh() {
+  clearInterval(programRefreshTimer);
+  programRefreshTimer = setInterval(() => {
+    if (latestPayload) {
+      applyData(latestPayload, true);
+    }
+  }, 30000);
+}
+
 function setupSocket() {
   const socket = io();
   socket.on('connect', () => {
@@ -360,4 +474,5 @@ loadInitialData().catch(() => {
   applyData({ settings: { event_name: 'Herzlich Willkommen', event_subtitle: 'Warte auf Daten …', slide_duration: 12 }, programItems: [], notices: [], media: [], customSlides: [], queue: [] });
 });
 startClock();
+startProgramRefresh();
 setupSocket();

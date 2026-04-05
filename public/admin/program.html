@@ -22,7 +22,7 @@
           <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
             <div>
               <h2 class="h5 fw-bold mb-1">Excel-Import</h2>
-              <p class="text-secondary mb-1">Sheet <code>Programm</code> hochladen, Vorschau prüfen und nur neue Einträge übernehmen.</p>
+              <p class="text-secondary mb-1">Sheet <code>Programm</code> hochladen, Vorschau prüfen und nur neue Einträge mit <code>Beginn</code> und <code>Ende</code> übernehmen.</p>
               <p class="small text-secondary mb-0">Vorlage mit Beispielzeilen und passenden Spaltennamen herunterladen und direkt befüllen.</p>
             </div>
             <a class="btn btn-outline-secondary" href="/api/program/import/template">Demo-Excel herunterladen</a>
@@ -46,8 +46,8 @@
               <thead>
                 <tr>
                   <th>Status</th>
-                  <th>Tag</th>
-                  <th>Zeit</th>
+                  <th>Beginn</th>
+                  <th>Ende</th>
                   <th>Titel</th>
                   <th>Ort</th>
                 </tr>
@@ -64,14 +64,14 @@
             <h2 class="h5 fw-bold mb-3">Programmpunkt</h2>
             <form id="programForm" class="row g-3">
               <input type="hidden" id="programId" />
-              <div class="col-md-6"><label class="form-label">Tag</label><input class="form-control" id="programDay" /></div>
-              <div class="col-md-6"><label class="form-label">Uhrzeit</label><input class="form-control" id="programTime" placeholder="09:00" /></div>
+              <div class="col-md-6"><label class="form-label">Beginn</label><input class="form-control" id="programStartAt" type="datetime-local" required /></div>
+              <div class="col-md-6"><label class="form-label">Ende</label><input class="form-control" id="programEndAt" type="datetime-local" /></div>
+              <div class="col-12"><div class="form-text">Auf dem Screen erscheinen nur laufende und kommende Programmpunkte des aktuellen Tages.</div></div>
               <div class="col-12"><label class="form-label">Titel</label><input class="form-control" id="programTitle" required /></div>
               <div class="col-12"><label class="form-label">Beschreibung</label><textarea class="form-control" id="programDescription" rows="3"></textarea></div>
               <div class="col-md-6"><label class="form-label">Ort</label><input class="form-control" id="programLocation" /></div>
               <div class="col-md-6"><label class="form-label">Kategorie</label><input class="form-control" id="programCategory" /></div>
               <div class="col-md-6"><label class="form-label">Icon</label><input class="form-control" id="programIcon" placeholder="🏊" /></div>
-              <div class="col-md-6"><label class="form-label">Sortierung</label><input class="form-control" type="number" id="programSort" min="1" /></div>
               <div class="col-12 d-flex gap-3">
                 <div class="form-check"><input class="form-check-input" type="checkbox" id="programHighlight" /><label class="form-check-label" for="programHighlight">Highlight</label></div>
                 <div class="form-check"><input class="form-check-input" type="checkbox" id="programVisible" checked /><label class="form-check-label" for="programVisible">Sichtbar</label></div>
@@ -87,7 +87,7 @@
           <div class="card"><div class="card-body">
             <div class="table-responsive">
               <table class="table align-middle">
-                <thead><tr><th>Zeit</th><th>Titel</th><th>Ort</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Zeitplan</th><th>Titel</th><th>Ort</th><th>Status</th><th></th></tr></thead>
                 <tbody id="programTableBody"></tbody>
               </table>
             </div>
