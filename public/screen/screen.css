@@ -207,8 +207,9 @@ body {
 
 .program-slide {
   display: grid;
-  grid-template-columns: 220px 4px 1fr;
+  grid-template-columns: 220px 4px minmax(0, 820px);
   gap: 42px;
+  max-width: 1220px;
 }
 
 .prog-time {
@@ -237,12 +238,14 @@ body {
   font-style: italic;
   line-height: 1.08;
   margin-bottom: 16px;
+  max-width: 820px;
 }
 
 .prog-desc {
   font-size: 25px;
   color: var(--text-dim);
   line-height: 1.5;
+  max-width: 820px;
 }
 
 .notice-badge {
