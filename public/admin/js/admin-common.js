@@ -67,7 +67,6 @@ window.AdminCommon = (() => {
       ['notices', 'Hinweise', '/admin/notices'],
       ['media', 'Medien', '/admin/media'],
       ['slides', 'Slides', '/admin/slides'],
-      ['queue', 'Queue', '/admin/queue'],
     ];
 
     mount.innerHTML = `

@@ -13,7 +13,7 @@
       <div class="page-header">
         <div>
           <h1>Custom Slides</h1>
-          <p>Freitext-Slides für QR-Codes, Danksagungen oder Sondermeldungen.</p>
+          <p>Eigene Slides mit Überschrift, Text und bis zu vier Bildern.</p>
         </div>
       </div>
 
@@ -21,10 +21,22 @@
         <div class="col-lg-4">
           <div class="card"><div class="card-body">
             <h2 class="h5 fw-bold mb-3">Neuer Slide</h2>
-            <form id="slideForm" class="row g-3">
+            <form id="slideForm" class="row g-3" enctype="multipart/form-data">
               <input type="hidden" id="slideId" />
-              <div class="col-12"><input class="form-control" id="slideTitle" placeholder="Titel" required /></div>
-              <div class="col-12"><textarea class="form-control" id="slideContent" rows="5" placeholder="Inhalt (HTML erlaubt)"></textarea></div>
+              <div class="col-12">
+                <label class="form-label" for="slideTitle">Überschrift</label>
+                <input class="form-control" id="slideTitle" placeholder="Überschrift" required />
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="slideContent">Text</label>
+                <textarea class="form-control" id="slideContent" rows="5" placeholder="Text zum Slide"></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="slideImages">Bilder (max. 4)</label>
+                <input class="form-control" type="file" id="slideImages" accept="image/*" multiple />
+                <div class="form-text">Optional. Beim Bearbeiten ersetzen neue Bilder die bisherigen.</div>
+                <div id="slideImagesPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
+              </div>
               <div class="col-md-6"><input class="form-control" id="slideBg" placeholder="#013154" /></div>
               <div class="col-md-6"><input class="form-control" id="slideColor" placeholder="#ffffff" /></div>
               <div class="col-md-6"><select class="form-select" id="slideLayout"><option value="center">Center</option><option value="left">Left</option><option value="fullscreen">Fullscreen</option></select></div>

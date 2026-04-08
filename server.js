@@ -115,7 +115,6 @@ const adminPages = {
   '/admin/notices': 'notices.html',
   '/admin/media': 'media.html',
   '/admin/slides': 'slides.html',
-  '/admin/queue': 'queue.html',
 };
 
 for (const [routePath, fileName] of Object.entries(adminPages)) {
@@ -123,6 +122,10 @@ for (const [routePath, fileName] of Object.entries(adminPages)) {
     res.sendFile(path.join(adminDir, fileName));
   });
 }
+
+app.get('/admin/queue', requirePageAuth, (_req, res) => {
+  res.redirect('/admin');
+});
 
 app.get('/screen', (_req, res) => {
   res.sendFile(path.join(screenDir, 'index.html'));
@@ -140,7 +143,7 @@ app.use('/api/settings', createSettingsRouter({ logoUpload: upload.single('logo'
 app.use('/api/program', createProgramRouter({ excelUpload: excelUpload.single('file') }));
 app.use('/api/notices', createNoticesRouter());
 app.use('/api/media', createMediaRouter({ mediaUpload: upload.single('file') }));
-app.use('/api/slides', createSlidesRouter());
+app.use('/api/slides', createSlidesRouter({ slideUpload: upload.array('images', 4) }));
 app.use('/api/queue', createQueueRouter());
 app.use('/api/public', createPublicRouter());
 

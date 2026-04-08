@@ -4,6 +4,7 @@ let currentSlideIndex = 0;
 let slideTimer = null;
 let clockTimer = null;
 let programRefreshTimer = null;
+let lastRenderableSignature = '';
 
 function byId(id) {
   return document.getElementById(id);
@@ -94,29 +95,65 @@ function isCurrentOrFutureProgramItem(item, now = new Date()) {
 
 function getRenderablePayload(payload = {}) {
   const programItems = (payload.programItems || []).filter((item) => isProgramItemOnCurrentDay(item) && isCurrentOrFutureProgramItem(item));
-  const allowedProgramIds = new Set(programItems.map((item) => Number(item.id)));
-  const queue = Array.isArray(payload.queue)
-    ? payload.queue.filter((item) => item.enabled !== 0).filter((item) => {
-        if (item.slide_type === 'overview') {
-          return programItems.length > 0;
-        }
-        if (item.slide_type === 'program') {
-          return allowedProgramIds.has(Number(item.reference_id));
-        }
-        return true;
-      })
-    : [];
 
   return {
     ...payload,
     programItems,
-    queue,
+    queue: [],
   };
 }
 
 function getDefaultDuration() {
   const seconds = Number(latestPayload?.settings?.slide_duration || 12);
   return Math.max(seconds, 3) * 1000;
+}
+
+function getSlideKey(slide = {}) {
+  if (slide.type === 'program') {
+    return `program:${slide.data?.id ?? slide.data?.title ?? ''}`;
+  }
+  if (slide.type === 'notice') {
+    return `notice:${slide.data?.id ?? slide.data?.title ?? ''}`;
+  }
+  if (slide.type === 'media') {
+    return `media:${slide.data?.id ?? slide.data?.filename ?? ''}`;
+  }
+  if (slide.type === 'custom') {
+    return `custom:${slide.data?.id ?? slide.data?.title ?? ''}`;
+  }
+  if (slide.type === 'overview') {
+    return `overview:${(slide.items || []).map((item) => item.id).join(',')}`;
+  }
+  return slide.type || 'slide';
+}
+
+function isVideoMediaItem(item = {}) {
+  return String(item.type || '').toLowerCase() === 'video' || /\.(mp4|webm)$/i.test(item.filename || '');
+}
+
+function getMediaFallbackDuration(item = {}) {
+  const seconds = Number(item.duration) || Number(latestPayload?.settings?.slide_duration) || 12;
+  return Math.max(seconds, 3) * 1000;
+}
+
+function getRenderableSignature(payload = {}) {
+  const renderData = getRenderablePayload(payload);
+  return JSON.stringify({
+    programIds: (renderData.programItems || []).map((item) => `${item.id}:${item.effective_end_at || item.end_at || ''}`),
+    noticeIds: (renderData.notices || []).map((item) => `${item.id}:${item.title || ''}:${item.text || ''}`),
+    mediaIds: (renderData.media || []).map((item) => `${item.id}:${item.filename || ''}:${item.title || ''}:${item.caption || ''}:${item.duration || ''}`),
+    customIds: (renderData.customSlides || []).map((item) => `${item.id}:${item.title || ''}:${item.content || ''}:${getCustomSlideImages(item).join(',')}:${item.duration || ''}`),
+  });
+}
+
+function getCustomSlideImages(item = {}) {
+  const images = Array.isArray(item.images)
+    ? item.images
+    : Array.isArray(item.image_paths)
+      ? item.image_paths
+      : [];
+
+  return images.filter(Boolean).slice(0, 4);
 }
 
 function showFallbackLogo() {
@@ -216,34 +253,39 @@ function buildSlideFromQueueItem(queueItem, data) {
 
 function buildSlides(data) {
   const renderData = getRenderablePayload(data);
-  const queue = renderData.queue || [];
-  const baseSlides = [];
+  const baseSlides = [{ type: 'welcome', duration: getDefaultDuration() }];
+  const programItems = renderData.programItems || [];
+  const highlightedProgramItems = programItems.filter((item) => Number(item.highlight) === 1);
+  const detailProgramItems = highlightedProgramItems.length ? highlightedProgramItems : programItems;
 
-  if (queue.length) {
-    queue.forEach((queueItem) => {
-      baseSlides.push(...buildSlideFromQueueItem(queueItem, renderData));
-    });
-
-    queue
-      .filter((item) => Number(item.repeat_every) > 0)
-      .forEach((queueItem) => {
-        const interval = Number(queueItem.repeat_every);
-        const extraSlides = buildSlideFromQueueItem(queueItem, renderData);
-        if (!extraSlides.length || interval <= 0) return;
-
-        for (let index = interval; index < baseSlides.length; index += interval + 1) {
-          baseSlides.splice(index, 0, ...extraSlides.map((slide) => ({ ...slide })));
-        }
-      });
+  if (programItems.length) {
+    baseSlides.push(...overviewSlides(programItems));
   }
 
-  if (!baseSlides.length) {
-    baseSlides.push({ type: 'welcome', duration: getDefaultDuration() });
-    baseSlides.push(...overviewSlides(renderData.programItems || []));
-    (renderData.notices || []).forEach((item) => baseSlides.push({ type: 'notice', data: item, duration: getDefaultDuration() }));
-  }
+  detailProgramItems.forEach((item) => {
+    baseSlides.push({ type: 'program', data: item, duration: getDefaultDuration() });
+  });
 
-  slides = baseSlides;
+  (renderData.notices || []).forEach((item) => {
+    baseSlides.push({ type: 'notice', data: item, duration: getDefaultDuration() });
+  });
+
+  (renderData.media || []).forEach((item) => {
+    const duration = (Number(item.duration) || Number(latestPayload?.settings?.slide_duration) || 12) * 1000;
+    baseSlides.push({ type: 'media', data: item, duration });
+  });
+
+  (renderData.customSlides || []).forEach((item) => {
+    const duration = (Number(item.duration) || Number(latestPayload?.settings?.slide_duration) || 12) * 1000;
+    baseSlides.push({ type: 'custom', data: item, duration });
+  });
+
+  slides = baseSlides.filter((slide, index, allSlides) => {
+    if (index === 0) {
+      return true;
+    }
+    return getSlideKey(slide) !== getSlideKey(allSlides[index - 1]);
+  });
 }
 
 function renderSlide(slide) {
@@ -315,17 +357,26 @@ function renderSlide(slide) {
   if (slide.type === 'media') {
     const item = slide.data;
     const isVideo = /\.(mp4|webm)$/i.test(item.filename || '');
+    const cleanTitle = String(item.title || '').trim();
+    const cleanCaption = String(item.caption || '').trim();
     const mediaElement = isVideo
-      ? `<video src="/uploads/${escapeHtml(item.filename)}" autoplay muted loop playsinline></video>`
-      : `<img src="/uploads/${escapeHtml(item.filename)}" alt="${escapeHtml(item.title || item.original_name)}" />`;
+      ? `<video src="/uploads/${escapeHtml(item.filename)}" autoplay muted playsinline preload="metadata" aria-label="${escapeHtml(cleanTitle || 'Medieninhalt')}"></video>`
+      : `<img src="/uploads/${escapeHtml(item.filename)}" alt="${escapeHtml(cleanTitle || 'Bild')}" />`;
+    const metaElement = cleanTitle || cleanCaption
+      ? `
+          <figcaption class="media-meta">
+            ${cleanTitle ? `<div class="media-caption-title">${escapeHtml(cleanTitle)}</div>` : ''}
+            ${cleanCaption ? `<div class="media-caption-text">${escapeHtml(cleanCaption)}</div>` : ''}
+          </figcaption>
+        `
+      : '';
 
     return `
       <section class="slide media-slide">
-        <figure class="media-figure">${mediaElement}</figure>
-        <div>
-          <div class="media-caption-title">${escapeHtml(item.title || item.original_name)}</div>
-          <div class="media-caption-text">${escapeHtml(item.caption || '')}</div>
-        </div>
+        <figure class="media-figure">
+          ${mediaElement}
+          ${metaElement}
+        </figure>
       </section>
     `;
   }
@@ -335,10 +386,33 @@ function renderSlide(slide) {
     const bg = item.background_color || 'transparent';
     const color = item.text_color || 'var(--text-dark)';
     const layout = item.layout || 'center';
+    const images = getCustomSlideImages(item);
+    const contentMarkup = String(item.content || '').replace(/\n/g, '<br>');
+
+    if (images.length) {
+      return `
+        <section class="slide custom-slide with-images ${escapeHtml(layout)}" style="background:${escapeHtml(bg)}; color:${escapeHtml(color)}; border-radius:24px; margin:20px; padding:26px;">
+          <div class="custom-slide-panel">
+            <div class="custom-copy">
+              <div class="custom-title">${escapeHtml(item.title)}</div>
+              <div class="custom-content">${contentMarkup}</div>
+            </div>
+            <div class="custom-image-grid count-${images.length}">
+              ${images.map((fileName, index) => `
+                <div class="custom-image-card image-${index + 1}">
+                  <img src="/uploads/${encodeURIComponent(fileName)}" alt="${escapeHtml(item.title || `Slide Bild ${index + 1}`)}" />
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
     return `
       <section class="slide custom-slide ${escapeHtml(layout)}" style="background:${escapeHtml(bg)}; color:${escapeHtml(color)}; border-radius:24px; margin:20px; padding:40px;">
         <div class="custom-title">${escapeHtml(item.title)}</div>
-        <div class="custom-content">${item.content || ''}</div>
+        <div class="custom-content">${contentMarkup}</div>
       </section>
     `;
   }
@@ -351,16 +425,103 @@ function renderSlides() {
   byId('indicators').innerHTML = slides.map((_, index) => `<div class="slide-dot ${index === 0 ? 'active' : ''}"></div>`).join('');
 }
 
-function scheduleNext() {
+function getBufferedSlideDuration(index, baseDuration) {
+  const resolvedBase = baseDuration || slides[index]?.duration || getDefaultDuration();
+  const currentType = slides[index]?.type;
+  const nextType = slides[(index + 1) % Math.max(slides.length, 1)]?.type;
+
+  if (currentType === 'media' && nextType === 'media') {
+    return resolvedBase + 1800;
+  }
+
+  if (currentType === 'media' || nextType === 'media') {
+    return resolvedBase + 900;
+  }
+
+  return resolvedBase;
+}
+
+function scheduleNext(durationOverride) {
   clearTimeout(slideTimer);
   if (slides.length <= 1) {
     return;
   }
 
-  const duration = slides[currentSlideIndex]?.duration || getDefaultDuration();
+  const duration = durationOverride || getBufferedSlideDuration(currentSlideIndex);
   slideTimer = setTimeout(() => {
     showSlide((currentSlideIndex + 1) % slides.length);
   }, duration);
+}
+
+function handleActiveVideoSlide(slideIndex, slideEl) {
+  const video = slideEl?.querySelector('video');
+  const slide = slides[slideIndex];
+  if (!video || slide?.type !== 'media' || !isVideoMediaItem(slide.data)) {
+    return false;
+  }
+
+  document.querySelectorAll('.media-slide video').forEach((otherVideo) => {
+    if (otherVideo !== video) {
+      otherVideo.pause();
+      otherVideo.onended = null;
+      try {
+        otherVideo.currentTime = 0;
+      } catch (_error) {
+        // ignore seek errors on inactive videos
+      }
+    }
+  });
+
+  const moveNext = () => {
+    if (currentSlideIndex === slideIndex && slides.length > 1) {
+      showSlide((slideIndex + 1) % slides.length);
+    }
+  };
+
+  const startPlayback = () => {
+    const resolvedDuration = Number.isFinite(video.duration) && video.duration > 0
+      ? Math.ceil(video.duration * 1000)
+      : getMediaFallbackDuration(slide.data);
+
+    clearTimeout(slideTimer);
+    updateProgressBar(resolvedDuration);
+    scheduleNext(resolvedDuration + 250);
+
+    video.onended = () => {
+      clearTimeout(slideTimer);
+      moveNext();
+    };
+
+    try {
+      video.currentTime = 0;
+    } catch (_error) {
+      // ignore seek errors if the browser blocks seeking temporarily
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  };
+
+  if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+    startPlayback();
+  } else {
+    updateProgressBar(getMediaFallbackDuration(slide.data));
+    scheduleNext(getMediaFallbackDuration(slide.data));
+    video.addEventListener('loadedmetadata', () => {
+      if (currentSlideIndex === slideIndex) {
+        startPlayback();
+      }
+    }, { once: true });
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  }
+
+  return true;
 }
 
 function updateProgressBar(duration) {
@@ -378,25 +539,64 @@ function updateProgressBar(duration) {
 function showSlide(index) {
   const allSlides = Array.from(document.querySelectorAll('.slide'));
   const dots = Array.from(document.querySelectorAll('.slide-dot'));
+  const screenShell = document.querySelector('.screen-shell');
+
   allSlides.forEach((slideEl, slideIndex) => {
     slideEl.classList.toggle('active', slideIndex === index);
+    if (slideIndex !== index) {
+      const video = slideEl.querySelector('video');
+      if (video) {
+        video.pause();
+        video.onended = null;
+        try {
+          video.currentTime = 0;
+        } catch (_error) {
+          // ignore seek errors on hidden videos
+        }
+      }
+    }
   });
+
   dots.forEach((dot, dotIndex) => {
     dot.classList.toggle('active', dotIndex === index);
   });
 
   currentSlideIndex = index;
-  const duration = slides[index]?.duration || getDefaultDuration();
+  const activeSlideEl = allSlides[index];
+  const activeSlide = slides[index];
+  screenShell?.classList.toggle('media-focus', activeSlide?.type === 'media');
+
+  if (handleActiveVideoSlide(index, activeSlideEl)) {
+    return;
+  }
+
+  const duration = getBufferedSlideDuration(index);
   updateProgressBar(duration);
-  scheduleNext();
+  scheduleNext(duration);
 }
 
 function applyData(payload, preserveCurrentSlide = false) {
+  const nextSignature = getRenderableSignature(payload);
+  if (preserveCurrentSlide && nextSignature === lastRenderableSignature) {
+    latestPayload = payload;
+    updateHeader();
+    return;
+  }
+
   latestPayload = payload;
+  lastRenderableSignature = nextSignature;
+  const currentSlideKey = preserveCurrentSlide ? getSlideKey(slides[currentSlideIndex]) : '';
+
   updateHeader();
   buildSlides(payload);
   renderSlides();
-  const nextIndex = preserveCurrentSlide ? Math.min(currentSlideIndex, Math.max(slides.length - 1, 0)) : 0;
+
+  let nextIndex = 0;
+  if (preserveCurrentSlide && currentSlideKey) {
+    const matchingIndex = slides.findIndex((slide) => getSlideKey(slide) === currentSlideKey);
+    nextIndex = matchingIndex >= 0 ? matchingIndex : Math.min(currentSlideIndex, Math.max(slides.length - 1, 0));
+  }
+
   showSlide(nextIndex);
 }
 
@@ -451,7 +651,10 @@ function startProgramRefresh() {
   clearInterval(programRefreshTimer);
   programRefreshTimer = setInterval(() => {
     if (latestPayload) {
-      applyData(latestPayload, true);
+      const nextSignature = getRenderableSignature(latestPayload);
+      if (nextSignature !== lastRenderableSignature) {
+        applyData(latestPayload, true);
+      }
     }
   }, 30000);
 }

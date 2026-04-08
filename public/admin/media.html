@@ -27,7 +27,10 @@
               <div class="col-12"><input class="form-control" id="mediaTitle" placeholder="Titel" /></div>
               <div class="col-12"><textarea class="form-control" id="mediaCaption" rows="3" placeholder="Beschreibung"></textarea></div>
               <div class="col-md-6"><select class="form-select" id="mediaType"><option value="image">Bild</option><option value="sponsor">Sponsor</option><option value="map">Karte</option></select></div>
-              <div class="col-md-6"><input class="form-control" type="number" min="3" id="mediaDuration" placeholder="Dauer (s)" /></div>
+              <div class="col-md-6">
+                <input class="form-control" type="number" min="3" id="mediaDuration" placeholder="Bilddauer (s, optional)" />
+                <div class="form-text">Videos werden immer vollständig abgespielt.</div>
+              </div>
               <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="mediaActive" checked /><label class="form-check-label" for="mediaActive">Aktiv</label></div>
               <div class="col-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Speichern</button><button class="btn btn-outline-secondary" type="button" id="mediaCancel">Zurücksetzen</button></div>
             </form>

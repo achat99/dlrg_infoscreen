@@ -94,6 +94,7 @@ db.exec(`
     background_color TEXT DEFAULT '',
     text_color TEXT DEFAULT '',
     layout TEXT NOT NULL DEFAULT 'center',
+    image_paths TEXT DEFAULT '[]',
     active INTEGER DEFAULT 1,
     duration INTEGER,
     created_at TEXT NOT NULL
@@ -419,6 +420,41 @@ function ensureProgramItemsSchema() {
 ensureProgramItemsSchema();
 db.prepare('UPDATE program_items SET sort_order = 0 WHERE COALESCE(sort_order, 0) != 0').run();
 
+function normalizeStoredFileList(value) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).map((entry) => String(entry)).slice(0, 4);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map((entry) => String(entry)).slice(0, 4) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function ensureCustomSlidesSchema() {
+  const columns = db.prepare('PRAGMA table_info(custom_slides)').all().map((column) => column.name);
+  if (!columns.includes('image_paths')) {
+    db.exec("ALTER TABLE custom_slides ADD COLUMN image_paths TEXT DEFAULT '[]'");
+  }
+}
+
+function decorateCustomSlide(item) {
+  const images = normalizeStoredFileList(item.image_paths);
+  return {
+    ...item,
+    image_paths: images,
+    images,
+  };
+}
+
+ensureCustomSlidesSchema();
+
 function getSettings() {
   const rows = db.prepare('SELECT key, value FROM event_settings').all();
   return rows.reduce((acc, row) => {
@@ -549,7 +585,8 @@ function getCustomSlides(includeInactive = true) {
   const whereClause = includeInactive ? '' : 'WHERE active = 1';
   return db
     .prepare(`SELECT * FROM custom_slides ${whereClause} ORDER BY created_at DESC, id DESC`)
-    .all();
+    .all()
+    .map((item) => decorateCustomSlide(item));
 }
 
 function buildAutoQueue({ persist = false, currentAndFutureOnly = false, currentDayOnly = false } = {}) {
@@ -627,18 +664,6 @@ function getQueue(includeDisabled = true, options = {}) {
 function getPublicScreenData() {
   const settings = getSettings();
   const programItems = getProgramItems(false, { currentAndFutureOnly: true, currentDayOnly: true });
-  const allowedProgramIds = new Set(programItems.map((item) => Number(item.id)));
-  const queue = getQueue(false, { currentAndFutureOnly: true, currentDayOnly: true }).filter((item) => {
-    if (item.slide_type === 'overview') {
-      return programItems.length > 0;
-    }
-
-    if (item.slide_type === 'program') {
-      return allowedProgramIds.has(Number(item.reference_id));
-    }
-
-    return true;
-  });
 
   return {
     settings,
@@ -646,7 +671,7 @@ function getPublicScreenData() {
     notices: getNotices(false),
     media: getMedia(false),
     customSlides: getCustomSlides(false),
-    queue,
+    queue: [],
     generatedAt: nowIso(),
   };
 }
