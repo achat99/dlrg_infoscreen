@@ -39,12 +39,30 @@ function start(id, url) {
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
+    // Main-Profil: kompatibel mit fMP4 und nutzt Hardware-Decoder auf Pi 4B
+    '-profile:v', 'main',
+    '-level', '4.0',
+    // 25 fps – reduziert Dekodieraufwand, reicht für Infoscreen-Streams
+    '-r', '25',
+    // Feste GOP-Größe: muss zur Segmentlänge passen (25fps × 6s = 150)
+    '-g', '150',
+    '-sc_threshold', '0',
+    '-b:v', '4000k',
+    '-maxrate', '4000k',
+    '-bufsize', '8000k',
+    // Seitenverhältnis erhalten, Breite automatisch (gerade Zahl, Pflicht für H.264)
+    '-vf', 'scale=-2:720',
     '-c:a', 'aac',
+    '-b:a', '128k',
+    '-ar', '44100',
     '-f', 'hls',
-    '-hls_time', '2',
-    '-hls_list_size', '4',
+    '-hls_time', '6',
+    '-hls_list_size', '5',
+    // fMP4-Segmente statt MPEG-TS: Chromium nutzt damit den nativen Hardware-Decoder
+    // (MPEG-TS wird von HLS.js in JS geparsert → kein Hardware-Decode → Flackern)
+    '-hls_segment_type', 'fmp4',
     '-hls_flags', 'delete_segments+append_list',
-    '-hls_segment_filename', path.join(hlsDir, 'seg%03d.ts'),
+    '-hls_segment_filename', path.join(hlsDir, 'seg%03d.m4s'),
     outputFile,
   ];
 

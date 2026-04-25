@@ -51,6 +51,29 @@
           </div></div>
         </div>
       </div>
+
+      <div class="card mt-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 fw-bold mb-0">Verbundene Systeme</h2>
+            <span class="text-secondary small">Systeme, die sich jemals verbunden haben</span>
+          </div>
+          <div id="clientListContainer">
+            <p class="text-secondary" id="clientListEmpty">Noch keine Systeme bekannt.</p>
+            <table class="table table-sm align-middle d-none" id="clientListTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Zuletzt gesehen</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="clientListBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </main>
 
     <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
@@ -71,6 +94,80 @@
 
       document.getElementById('refreshBtn').addEventListener('click', () => window.loadPageData());
       AdminCommon.initPage('dashboard');
+
+      // ── Verbundene Systeme ────────────────────────────────────────────────
+      function formatRelativeTime(isoString) {
+        if (!isoString) return '–';
+        const diff = Date.now() - new Date(isoString).getTime();
+        const sec = Math.floor(diff / 1000);
+        if (sec < 5) return 'gerade eben';
+        if (sec < 60) return `vor ${sec} Sek.`;
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `vor ${min} Min.`;
+        const hours = Math.floor(min / 60);
+        if (hours < 24) return `vor ${hours} Std.`;
+        return new Date(isoString).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      }
+
+      function renderClientList(clients) {
+        const empty = document.getElementById('clientListEmpty');
+        const table = document.getElementById('clientListTable');
+        const tbody = document.getElementById('clientListBody');
+
+        if (!clients || clients.length === 0) {
+          empty.classList.remove('d-none');
+          table.classList.add('d-none');
+          return;
+        }
+
+        empty.classList.add('d-none');
+        table.classList.remove('d-none');
+
+        tbody.innerHTML = clients.map((c) => {
+          const badge = c.online
+            ? '<span class="badge bg-success">● Online</span>'
+            : '<span class="badge bg-secondary">Offline</span>';
+          return `
+            <tr>
+              <td><strong>${AdminCommon.escapeHtml(c.name)}</strong></td>
+              <td>${badge}</td>
+              <td class="text-secondary small">${formatRelativeTime(c.last_seen)}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-danger" data-delete-client="${c.id}" title="System entfernen">✕</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      async function loadClientList() {
+        try {
+          const clients = await AdminCommon.apiFetch('/api/clients');
+          renderClientList(clients);
+        } catch (_err) {
+          // ignore
+        }
+      }
+
+      document.getElementById('clientListBody').addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-delete-client]');
+        if (!btn) return;
+        const id = btn.dataset.deleteClient;
+        if (!confirm('System dauerhaft aus der Liste entfernen?')) return;
+        try {
+          await AdminCommon.apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
+          loadClientList();
+        } catch (_err) {
+          AdminCommon.showToast('Fehler beim Löschen des Systems', 'danger');
+        }
+      });
+
+      // Socket-Event für Live-Updates der Client-Liste
+      AdminCommon.onSocketEvent('admin:client-list', (clients) => {
+        renderClientList(clients);
+      });
+
+      loadClientList();
     </script>
   </body>
 </html>

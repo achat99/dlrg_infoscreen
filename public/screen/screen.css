@@ -387,6 +387,10 @@ body {
 
 .stream-video {
   background: #000;
+  /* Eigene GPU-Compositing-Ebene erzwingen – reduziert Tearing/Flackern auf Raspberry Pi */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .media-meta {

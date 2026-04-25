@@ -1,4 +1,4 @@
-const { getPublicScreenData } = require('./db');
+const { getPublicScreenData, upsertScreenClient, markScreenClientOffline, getScreenClients } = require('./db');
 
 let ioInstance = null;
 const clientCounts = {
@@ -27,6 +27,9 @@ function updateClientCounts() {
   return clientCounts;
 }
 
+// Map from socket.id → client name (nur benannte Screen-Clients)
+const namedScreenClients = new Map();
+
 function emitAdminStats() {
   if (!ioInstance) {
     return;
@@ -39,23 +42,50 @@ function emitAdminStats() {
   });
 }
 
+function emitClientList() {
+  if (!ioInstance) {
+    return;
+  }
+
+  ioInstance.to('admins').emit('admin:client-list', getScreenClients());
+}
+
 function setupSocket(io) {
   ioInstance = io;
 
   io.on('connection', (socket) => {
-    socket.on('client:register', ({ role } = {}) => {
+    socket.on('client:register', ({ role, name } = {}) => {
       const normalizedRole = role === 'screen' ? 'screen' : 'admin';
       socket.data.role = normalizedRole;
       socket.join(normalizedRole === 'screen' ? 'screens' : 'admins');
 
       if (normalizedRole === 'screen') {
         socket.emit('screen:update', getPublicScreenData());
+
+        const clientName = typeof name === 'string' ? name.trim().slice(0, 100) : '';
+        if (clientName) {
+          socket.data.clientName = clientName;
+          namedScreenClients.set(socket.id, clientName);
+          upsertScreenClient(clientName);
+          emitClientList();
+        }
+      }
+
+      if (normalizedRole === 'admin') {
+        // Aktuellen Client-Status an den neu verbundenen Admin schicken
+        socket.emit('admin:client-list', getScreenClients());
       }
 
       emitAdminStats();
     });
 
     socket.on('disconnect', () => {
+      const clientName = namedScreenClients.get(socket.id);
+      if (clientName) {
+        namedScreenClients.delete(socket.id);
+        markScreenClientOffline(clientName);
+        emitClientList();
+      }
       emitAdminStats();
     });
   });
@@ -98,4 +128,5 @@ module.exports = {
   forceSlide,
   reloadScreens,
   getScreenClientCount,
+  emitClientList,
 };

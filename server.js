@@ -21,6 +21,9 @@ const createMediaRouter = require('./routes/api-media');
 const createSlidesRouter = require('./routes/api-slides');
 const createQueueRouter = require('./routes/api-queue');
 const createPublicRouter = require('./routes/api-public');
+const clientsRouter = require('./routes/api-clients');
+
+const { getMedia } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -148,6 +151,7 @@ app.use('/api/media', createMediaRouter({ mediaUpload: upload.single('file') }))
 app.use('/api/slides', createSlidesRouter({ slideUpload: upload.array('images', 4) }));
 app.use('/api/queue', createQueueRouter());
 app.use('/api/public', createPublicRouter());
+app.use('/api/clients', clientsRouter);
 
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
@@ -163,6 +167,20 @@ app.use((err, _req, res, _next) => {
 
 server.listen(port, () => {
   console.log(`Infoscreen server listening on http://localhost:${port}`);
+
+  // Alle aktiven RTMP/RTSP-Streams nach Neustart automatisch wieder starten
+  try {
+    const allMedia = getMedia(false); // nur aktive Einträge
+    const rtmpRtspStreams = allMedia.filter(
+      (item) => item.type === 'stream' && streamManager.isRtmpOrRtsp(item.stream_url || '')
+    );
+    for (const item of rtmpRtspStreams) {
+      console.log(`[stream-manager] Auto-starte Stream #${item.id}: ${item.stream_url}`);
+      streamManager.start(item.id, item.stream_url);
+    }
+  } catch (err) {
+    console.error('[stream-manager] Fehler beim Auto-Start der Streams:', err.message);
+  }
 });
 
 process.on('SIGTERM', () => {

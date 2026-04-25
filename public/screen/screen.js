@@ -466,7 +466,19 @@ function renderSlide(slide) {
   return '<section class="slide"></section>';
 }
 
+function destroyAllHlsInstances() {
+  const videos = document.querySelectorAll('video.hls-stream');
+  videos.forEach((video) => {
+    if (video._hlsInstance) {
+      try { video._hlsInstance.destroy(); } catch (_e) { /* ignore */ }
+      video._hlsInstance = null;
+    }
+  });
+}
+
 function renderSlides() {
+  // Laufende HLS-Instanzen sauber beenden, bevor der DOM neu aufgebaut wird
+  destroyAllHlsInstances();
   byId('slideContainer').innerHTML = slides.map(renderSlide).join('');
   byId('indicators').innerHTML = slides.map((_, index) => `<div class="slide-dot ${index === 0 ? 'active' : ''}"></div>`).join('');
 }
@@ -519,9 +531,25 @@ function handleActiveStreamSlide(slideIndex, slideEl) {
     if (streamUrl && typeof Hls !== 'undefined' && Hls.isSupported()) {
       if (!hlsVideo._hlsInstance) {
         const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          backBufferLength: 30,
+          // Worker deaktiviert: auf schwacher Hardware (Pi) kostet der Worker-Thread mehr als er spart
+          enableWorker: false,
+          lowLatencyMode: false,
+          // Großer Puffer verhindert Unterbrechungen bei kurzen Netzwerkschwankungen
+          backBufferLength: 90,
+          maxBufferLength: 90,
+          maxMaxBufferLength: 180,
+          // Keine aggressiven Level-Wechsel (würde kurzen Schwarzkader verursachen)
+          startLevel: -1,
+          abrEwmaDefaultEstimate: 1000000,
+          // Stall-Detection lockerer einstellen, damit der Pi Zeit hat zu dekodieren
+          highBufferWatchdogPeriod: 10,
+          nudgeMaxRetry: 10,
+          manifestLoadingMaxRetry: 6,
+          levelLoadingMaxRetry: 6,
+          fragLoadingMaxRetry: 6,
+          manifestLoadingRetryDelay: 2000,
+          levelLoadingRetryDelay: 2000,
+          fragLoadingRetryDelay: 2000,
         });
         hlsVideo._hlsInstance = hls;
         hls.loadSource(streamUrl);
@@ -539,7 +567,13 @@ function handleActiveStreamSlide(slideIndex, slideEl) {
           }
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            hls.startLoad();
+            // Netzwerkfehler (z. B. Stream noch nicht bereit nach Server-Neustart):
+            // Kurz warten und neu laden statt sofort aufzugeben.
+            setTimeout(() => {
+              if (currentSlideIndex === slideIndex && hlsVideo._hlsInstance === hls) {
+                hls.startLoad();
+              }
+            }, 4000);
             return;
           }
 
@@ -548,13 +582,20 @@ function handleActiveStreamSlide(slideIndex, slideEl) {
             return;
           }
 
-          // Harte Fehler: Instanz verwerfen, damit beim nächsten Aktivieren neu aufgebaut wird.
+          // Harte Fehler: Instanz verwerfen und nach kurzer Pause neu aufbauen.
           try {
             hls.destroy();
           } catch (_error) {
             // ignore destroy errors
           }
           hlsVideo._hlsInstance = null;
+
+          // Automatisch neu versuchen, falls der Slide noch aktiv ist (z. B. nach Server-Neustart)
+          setTimeout(() => {
+            if (currentSlideIndex === slideIndex) {
+              handleActiveStreamSlide(slideIndex, slideEl);
+            }
+          }, 6000);
         });
       }
       playVideo();
@@ -792,9 +833,11 @@ function startProgramRefresh() {
 
 function setupSocket() {
   const socket = io();
+  const urlName = new URLSearchParams(window.location.search).get('name') || '';
+
   socket.on('connect', () => {
     byId('connectionIndicator').classList.remove('offline');
-    socket.emit('client:register', { role: 'screen' });
+    socket.emit('client:register', { role: 'screen', name: urlName });
   });
   socket.on('disconnect', () => {
     byId('connectionIndicator').classList.add('offline');

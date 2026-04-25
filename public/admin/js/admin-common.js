@@ -107,6 +107,8 @@ window.AdminCommon = (() => {
     }
   }
 
+  const pendingSocketListeners = [];
+
   async function initPage(activeKey, options = {}) {
     renderNav(activeKey);
 
@@ -127,8 +129,21 @@ window.AdminCommon = (() => {
       });
     });
 
+    // Vorab registrierte Socket-Listener anhängen
+    for (const { event, handler } of pendingSocketListeners) {
+      socket.on(event, handler);
+    }
+
     if (typeof window.loadPageData === 'function') {
       await window.loadPageData();
+    }
+  }
+
+  function onSocketEvent(event, handler) {
+    if (socket) {
+      socket.on(event, handler);
+    } else {
+      pendingSocketListeners.push({ event, handler });
     }
   }
 
@@ -137,5 +152,6 @@ window.AdminCommon = (() => {
     showToast,
     escapeHtml,
     initPage,
+    onSocketEvent,
   };
 })();

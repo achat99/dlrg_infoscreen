@@ -117,6 +117,17 @@ try {
   // Spalte existiert bereits
 }
 
+// Migration: screen_clients Tabelle anlegen
+db.exec(`
+  CREATE TABLE IF NOT EXISTS screen_clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    online INTEGER DEFAULT 0,
+    last_seen TEXT,
+    created_at TEXT NOT NULL
+  );
+`);
+
 const defaultSettings = {
   event_name: 'Herzlich Willkommen',
   event_subtitle: 'DLRG-Jugend Schleswig-Holstein',
@@ -692,6 +703,29 @@ function getDashboardStats() {
   };
 }
 
+function upsertScreenClient(name) {
+  const now = nowIso();
+  db.prepare(`
+    INSERT INTO screen_clients (name, online, last_seen, created_at)
+    VALUES (?, 1, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET online = 1, last_seen = excluded.last_seen
+  `).run(name, now, now);
+}
+
+function markScreenClientOffline(name) {
+  db.prepare(
+    'UPDATE screen_clients SET online = 0, last_seen = ? WHERE name = ?'
+  ).run(nowIso(), name);
+}
+
+function getScreenClients() {
+  return db.prepare('SELECT * FROM screen_clients ORDER BY name ASC').all();
+}
+
+function deleteScreenClient(id) {
+  return db.prepare('DELETE FROM screen_clients WHERE id = ?').run(id);
+}
+
 module.exports = {
   db,
   nowIso,
@@ -708,4 +742,8 @@ module.exports = {
   buildAutoQueue,
   getPublicScreenData,
   getDashboardStats,
+  upsertScreenClient,
+  markScreenClientOffline,
+  getScreenClients,
+  deleteScreenClient,
 };
