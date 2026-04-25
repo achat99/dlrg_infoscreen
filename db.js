@@ -110,6 +110,13 @@ db.exec(`
   );
 `);
 
+// Migration: stream_url Spalte zur media-Tabelle hinzufügen
+try {
+  db.exec("ALTER TABLE media ADD COLUMN stream_url TEXT NOT NULL DEFAULT ''");
+} catch (_error) {
+  // Spalte existiert bereits
+}
+
 const defaultSettings = {
   event_name: 'Herzlich Willkommen',
   event_subtitle: 'DLRG-Jugend Schleswig-Holstein',

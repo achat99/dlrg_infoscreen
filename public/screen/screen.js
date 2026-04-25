@@ -116,7 +116,7 @@ function getSlideKey(slide = {}) {
     return `notice:${slide.data?.id ?? slide.data?.title ?? ''}`;
   }
   if (slide.type === 'media') {
-    return `media:${slide.data?.id ?? slide.data?.filename ?? ''}`;
+    return `media:${slide.data?.id ?? slide.data?.filename ?? slide.data?.stream_url ?? ''}`;
   }
   if (slide.type === 'custom') {
     return `custom:${slide.data?.id ?? slide.data?.title ?? ''}`;
@@ -131,6 +131,29 @@ function isVideoMediaItem(item = {}) {
   return String(item.type || '').toLowerCase() === 'video' || /\.(mp4|webm)$/i.test(item.filename || '');
 }
 
+function isStreamMediaItem(item = {}) {
+  return String(item.type || '').toLowerCase() === 'stream' && Boolean(item.stream_url);
+}
+
+function isRtmpOrRtspStream(item = {}) {
+  return String(item.type || '').toLowerCase() === 'stream'
+    && (/^rtmp[se]?:\/\//i.test(item.stream_url || '') || /^rtsps?:\/\//i.test(item.stream_url || ''));
+}
+
+function getEffectiveStreamUrl(item = {}) {
+  const url = item.stream_url || '';
+  if (/^rtmp[se]?:\/\//i.test(url) || /^rtsps?:\/\//i.test(url)) {
+    return `/stream-hls/${item.id}/index.m3u8`;
+  }
+  return url;
+}
+
+function getYouTubeEmbedUrl(url) {
+  const watchMatch = String(url).match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (!watchMatch) return null;
+  return `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&mute=1&controls=0&rel=0`;
+}
+
 function getMediaFallbackDuration(item = {}) {
   const seconds = Number(item.duration) || Number(latestPayload?.settings?.slide_duration) || 12;
   return Math.max(seconds, 3) * 1000;
@@ -141,7 +164,7 @@ function getRenderableSignature(payload = {}) {
   return JSON.stringify({
     programIds: (renderData.programItems || []).map((item) => `${item.id}:${item.effective_end_at || item.end_at || ''}`),
     noticeIds: (renderData.notices || []).map((item) => `${item.id}:${item.title || ''}:${item.text || ''}`),
-    mediaIds: (renderData.media || []).map((item) => `${item.id}:${item.filename || ''}:${item.title || ''}:${item.caption || ''}:${item.duration || ''}`),
+    mediaIds: (renderData.media || []).map((item) => `${item.id}:${item.filename || ''}:${item.title || ''}:${item.caption || ''}:${item.duration || ''}:${item.stream_url || ''}`),
     customIds: (renderData.customSlides || []).map((item) => `${item.id}:${item.title || ''}:${item.content || ''}:${getCustomSlideImages(item).join(',')}:${item.duration || ''}`),
   });
 }
@@ -356,12 +379,8 @@ function renderSlide(slide) {
 
   if (slide.type === 'media') {
     const item = slide.data;
-    const isVideo = /\.(mp4|webm)$/i.test(item.filename || '');
     const cleanTitle = String(item.title || '').trim();
     const cleanCaption = String(item.caption || '').trim();
-    const mediaElement = isVideo
-      ? `<video src="/uploads/${escapeHtml(item.filename)}" autoplay muted playsinline preload="metadata" aria-label="${escapeHtml(cleanTitle || 'Medieninhalt')}"></video>`
-      : `<img src="/uploads/${escapeHtml(item.filename)}" alt="${escapeHtml(cleanTitle || 'Bild')}" />`;
     const metaElement = cleanTitle || cleanCaption
       ? `
           <figcaption class="media-meta">
@@ -370,6 +389,33 @@ function renderSlide(slide) {
           </figcaption>
         `
       : '';
+
+    if (isStreamMediaItem(item)) {
+      const streamUrl = getEffectiveStreamUrl(item);
+      const youtubeEmbedUrl = getYouTubeEmbedUrl(streamUrl);
+      const isHls = /\.m3u8(\?.*)?$/i.test(streamUrl);
+      let mediaElement;
+      if (youtubeEmbedUrl) {
+        mediaElement = `<iframe class="stream-iframe" src="${youtubeEmbedUrl}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+      } else if (isHls) {
+        mediaElement = `<video class="stream-video hls-stream" data-stream-url="${escapeHtml(streamUrl)}" autoplay muted playsinline aria-label="${escapeHtml(cleanTitle || 'Stream')}"></video>`;
+      } else {
+        mediaElement = `<video class="stream-video" src="${escapeHtml(streamUrl)}" autoplay muted playsinline aria-label="${escapeHtml(cleanTitle || 'Stream')}"></video>`;
+      }
+      return `
+        <section class="slide media-slide stream-slide">
+          <figure class="media-figure">
+            ${mediaElement}
+            ${metaElement}
+          </figure>
+        </section>
+      `;
+    }
+
+    const isVideo = /\.(mp4|webm)$/i.test(item.filename || '');
+    const mediaElement = isVideo
+      ? `<video src="/uploads/${escapeHtml(item.filename)}" autoplay muted playsinline preload="metadata" aria-label="${escapeHtml(cleanTitle || 'Medieninhalt')}"></video>`
+      : `<img src="/uploads/${escapeHtml(item.filename)}" alt="${escapeHtml(cleanTitle || 'Bild')}" />`;
 
     return `
       <section class="slide media-slide">
@@ -451,6 +497,86 @@ function scheduleNext(durationOverride) {
   slideTimer = setTimeout(() => {
     showSlide((currentSlideIndex + 1) % slides.length);
   }, duration);
+}
+
+function handleActiveStreamSlide(slideIndex, slideEl) {
+  const slide = slides[slideIndex];
+  if (!slide || slide.type !== 'media' || !isStreamMediaItem(slide.data)) {
+    return false;
+  }
+
+  // HLS-Streams initialisieren
+  const hlsVideo = slideEl?.querySelector('video.hls-stream');
+  if (hlsVideo) {
+    const streamUrl = hlsVideo.dataset.streamUrl;
+    const playVideo = () => {
+      const playPromise = hlsVideo.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    };
+
+    if (streamUrl && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      if (!hlsVideo._hlsInstance) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 30,
+        });
+        hlsVideo._hlsInstance = hls;
+        hls.loadSource(streamUrl);
+        hls.attachMedia(hlsVideo);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (currentSlideIndex === slideIndex) {
+            playVideo();
+          }
+        });
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data?.fatal) {
+            return;
+          }
+
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+            return;
+          }
+
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+            return;
+          }
+
+          // Harte Fehler: Instanz verwerfen, damit beim nächsten Aktivieren neu aufgebaut wird.
+          try {
+            hls.destroy();
+          } catch (_error) {
+            // ignore destroy errors
+          }
+          hlsVideo._hlsInstance = null;
+        });
+      }
+      playVideo();
+    } else if (hlsVideo.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS (Safari)
+      if (!hlsVideo.src) {
+        hlsVideo.src = streamUrl;
+      }
+      playVideo();
+    } else if (streamUrl) {
+      // Fallback: Quelle trotzdem setzen, falls der Browser HLS nativ doch akzeptiert.
+      if (hlsVideo.src !== streamUrl) {
+        hlsVideo.src = streamUrl;
+      }
+      playVideo();
+    }
+  }
+
+  const duration = (Number(slide.data.duration) || Number(latestPayload?.settings?.slide_duration) || 30) * 1000;
+  updateProgressBar(duration);
+  scheduleNext(duration);
+  return true;
 }
 
 function handleActiveVideoSlide(slideIndex, slideEl) {
@@ -565,6 +691,11 @@ function showSlide(index) {
   const activeSlideEl = allSlides[index];
   const activeSlide = slides[index];
   screenShell?.classList.toggle('media-focus', activeSlide?.type === 'media');
+  screenShell?.classList.toggle('stream-focus', activeSlide?.type === 'media' && isStreamMediaItem(activeSlide?.data));
+
+  if (handleActiveStreamSlide(index, activeSlideEl)) {
+    return;
+  }
 
   if (handleActiveVideoSlide(index, activeSlideEl)) {
     return;

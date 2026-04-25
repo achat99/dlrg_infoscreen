@@ -13,6 +13,7 @@ require('./db');
 
 const { login, logout, authCheck, requirePageAuth } = require('./auth');
 const { setupSocket } = require('./socket');
+const streamManager = require('./stream-manager');
 const createSettingsRouter = require('./routes/api-settings');
 const createProgramRouter = require('./routes/api-program');
 const createNoticesRouter = require('./routes/api-notices');
@@ -134,6 +135,7 @@ app.get('/screen', (_req, res) => {
 app.use('/admin/assets', express.static(adminDir));
 app.use('/screen/assets', express.static(screenDir));
 app.use('/uploads', express.static(uploadDir));
+app.use('/stream-hls', express.static(streamManager.hlsBaseDir));
 
 app.post('/api/login', login);
 app.post('/api/logout', logout);
@@ -161,4 +163,14 @@ app.use((err, _req, res, _next) => {
 
 server.listen(port, () => {
   console.log(`Infoscreen server listening on http://localhost:${port}`);
+});
+
+process.on('SIGTERM', () => {
+  streamManager.stopAll();
+  server.close();
+});
+
+process.on('SIGINT', () => {
+  streamManager.stopAll();
+  process.exit(0);
 });
