@@ -24,6 +24,7 @@ chromium-browser \
   --noerrdialogs \
   --disable-infobars \
   --kiosk \
+  
   --start-fullscreen \
   --autoplay-policy=no-user-gesture-required \
   --disable-session-crashed-bubble \
