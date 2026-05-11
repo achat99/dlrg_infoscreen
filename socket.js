@@ -123,7 +123,7 @@ function broadcastScreenUpdate() {
     return;
   }
 
-  const payload = getPublicScreenData();
+  const payload = getPublicScreenData({ includeStreams: true });
   ioInstance.to('screens').emit('screen:update', payload);
   ioInstance.to('admins').emit('admin:data-changed', { updatedAt: payload.generatedAt });
   emitAdminStats();

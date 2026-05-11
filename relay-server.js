@@ -145,13 +145,26 @@ app.post('/relay/reload', requireRelaySecret, (_req, res) => {
 // ─── Public API fuer Screen-Clients ──────────────────────────────────────────
 
 // Initiales Laden der Screen-Daten (wird von screen.js beim Start aufgerufen)
+// Optional: ?streams=false um Live-Streams auszufiltern
 app.get('/api/public/screen-data', (req, res) => {
   if (!latestScreenData) {
     return res.status(503).json({
       error: 'Noch keine Daten vom lokalen Server empfangen. Bitte warten.',
     });
   }
-  return res.json(latestScreenData);
+
+  const includeStreams = req.query.streams !== 'false';
+  let data = latestScreenData;
+
+  if (!includeStreams) {
+    // Filtere Stream-Medien aus
+    data = {
+      ...data,
+      media: (data.media || []).filter((item) => item.type !== 'stream'),
+    };
+  }
+
+  return res.json(data);
 });
 
 // Status-Endpunkt

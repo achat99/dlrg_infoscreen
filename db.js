@@ -679,15 +679,25 @@ function getQueue(includeDisabled = true, options = {}) {
   return rows;
 }
 
-function getPublicScreenData() {
+function getPublicScreenData(options = {}) {
+  const { includeStreams = true } = options;
   const settings = getSettings();
   const programItems = getProgramItems(false, { currentAndFutureOnly: true, currentDayOnly: true });
+
+  let mediaItems = getMedia(false);
+  if (!includeStreams) {
+    // Filtere RTMP/RTSP und andere Stream-Typen aus
+    mediaItems = mediaItems.filter((item) => {
+      if (item.type === 'stream') return false;
+      return true;
+    });
+  }
 
   return {
     settings,
     programItems,
     notices: getNotices(false),
-    media: getMedia(false),
+    media: mediaItems,
     customSlides: getCustomSlides(false),
     queue: [],
     generatedAt: nowIso(),

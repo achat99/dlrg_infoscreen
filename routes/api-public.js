@@ -5,8 +5,9 @@ const { getScreenClientCount } = require('../socket');
 module.exports = function createPublicRouter() {
   const router = express.Router();
 
-  router.get('/screen-data', (_req, res) => {
-    res.json(getPublicScreenData());
+  router.get('/screen-data', (req, res) => {
+    const includeStreams = req.query.streams !== 'false';
+    res.json(getPublicScreenData({ includeStreams }));
   });
 
   router.get('/dashboard', (_req, res) => {
