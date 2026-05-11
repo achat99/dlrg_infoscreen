@@ -1,6 +1,33 @@
 const { getPublicScreenData, upsertScreenClient, markScreenClientOffline, getScreenClients } = require('./db');
 
 let ioInstance = null;
+
+// ─── Relay-Push ───────────────────────────────────────────────────────────────
+// Sendet Daten an einen optionalen Cloud-Relay-Server.
+// Konfiguration via RELAY_URL und RELAY_SECRET in .env.
+
+const RELAY_URL = String(process.env.RELAY_URL || '').trim().replace(/\/+$/, '');
+const RELAY_SECRET = String(process.env.RELAY_SECRET || '').trim();
+
+async function pushToRelay(endpoint, body) {
+  if (!RELAY_URL) {
+    return;
+  }
+
+  try {
+    await fetch(`${RELAY_URL}/relay${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(RELAY_SECRET ? { 'x-relay-secret': RELAY_SECRET } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (_err) {
+    // Relay nicht erreichbar – lokalen Betrieb nicht blockieren
+  }
+}
 const clientCounts = {
   screen: 0,
   admin: 0,
@@ -100,6 +127,9 @@ function broadcastScreenUpdate() {
   ioInstance.to('screens').emit('screen:update', payload);
   ioInstance.to('admins').emit('admin:data-changed', { updatedAt: payload.generatedAt });
   emitAdminStats();
+
+  // Synchron in die Cloud senden
+  pushToRelay('/push', payload);
 }
 
 function forceSlide(slide) {
@@ -108,6 +138,7 @@ function forceSlide(slide) {
   }
 
   ioInstance.to('screens').emit('screen:force-slide', slide);
+  pushToRelay('/force-slide', slide);
 }
 
 function reloadScreens() {
@@ -116,6 +147,7 @@ function reloadScreens() {
   }
 
   ioInstance.to('screens').emit('screen:reload');
+  pushToRelay('/reload', {});
 }
 
 function getScreenClientCount() {
