@@ -242,6 +242,18 @@ function overviewSlides(programItems) {
   return result;
 }
 
+function highlightSlides(programItems) {
+  if (!programItems.length) {
+    return [];
+  }
+
+  return [{
+    type: 'highlight-overview',
+    items: programItems,
+    duration: getDefaultDuration(),
+  }];
+}
+
 function buildSlideFromQueueItem(queueItem, data) {
   const programItems = data.programItems || [];
   const notices = data.notices || [];
@@ -279,15 +291,12 @@ function buildSlides(data) {
   const baseSlides = [{ type: 'welcome', duration: getDefaultDuration() }];
   const programItems = renderData.programItems || [];
   const highlightedProgramItems = programItems.filter((item) => Number(item.highlight) === 1);
-  const detailProgramItems = highlightedProgramItems.length ? highlightedProgramItems : programItems;
 
   if (programItems.length) {
     baseSlides.push(...overviewSlides(programItems));
   }
 
-  detailProgramItems.forEach((item) => {
-    baseSlides.push({ type: 'program', data: item, duration: getDefaultDuration() });
-  });
+  baseSlides.push(...highlightSlides(highlightedProgramItems));
 
   (renderData.notices || []).forEach((item) => {
     baseSlides.push({ type: 'notice', data: item, duration: getDefaultDuration() });
@@ -326,6 +335,27 @@ function renderSlide(slide) {
     return `
       <section class="slide overview-slide">
         <div class="ov-heading">Programmübersicht${pageText}</div>
+        <div class="ov-list">
+          ${slide.items.map((item) => {
+            const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
+            return `
+            <div class="ov-row">
+              <div>${escapeHtml(item.icon || '')}</div>
+              <div class="ov-time">${escapeHtml(timeLabel)}</div>
+              <div><strong>${escapeHtml(item.title)}</strong></div>
+              <div>${escapeHtml(item.location || '')}</div>
+            </div>
+          `;
+          }).join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  if (slide.type === 'highlight-overview') {
+    return `
+      <section class="slide overview-slide">
+        <div class="ov-heading">Highlights</div>
         <div class="ov-list">
           ${slide.items.map((item) => {
             const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
