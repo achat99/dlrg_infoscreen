@@ -168,6 +168,33 @@ function getScreenClientCount() {
   return updateClientCounts().screen;
 }
 
+function markScreenClientOnline(clientName) {
+  if (!clientName) {
+    return;
+  }
+
+  // Update the database or in-memory structure to mark the client as online
+  upsertScreenClient(clientName);
+
+  // Notify all admins about the updated client list
+  emitClientList();
+}
+
+function markScreenClientOffline(clientName) {
+  if (!clientName) {
+    return;
+  }
+
+  // Update the database or in-memory structure to mark the client as offline
+  const client = namedScreenClients.get(clientName);
+  if (client) {
+    namedScreenClients.delete(clientName);
+  }
+
+  // Notify all admins about the updated client list
+  emitClientList();
+}
+
 module.exports = {
   setupSocket,
   broadcastScreenUpdate,
@@ -176,4 +203,6 @@ module.exports = {
   reloadScreenByName,
   getScreenClientCount,
   emitClientList,
+  markScreenClientOnline,
+  markScreenClientOffline,
 };
