@@ -20,6 +20,11 @@ xset s off
 xset -dpms
 xset s noblank
 
+# Konsolen-Blanking deaktivieren (falls der Display-Manager dies sonst erneut setzt)
+if command -v setterm >/dev/null 2>&1; then
+  setterm -blank 0 -powerdown 0 -powersave off < /dev/tty1 > /dev/tty1 2>/dev/null || true
+fi
+
 chromium-browser \
   --noerrdialogs \
   --disable-infobars \
@@ -29,6 +34,9 @@ chromium-browser \
   --autoplay-policy=no-user-gesture-required \
   --disable-session-crashed-bubble \
   --disable-translate \
+  --disable-renderer-backgrounding \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
   --no-first-run \
   --fast \
   --fast-start \

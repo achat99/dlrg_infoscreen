@@ -5,6 +5,8 @@ let slideTimer = null;
 let clockTimer = null;
 let programRefreshTimer = null;
 let lastRenderableSignature = '';
+let wakeLockSentinel = null;
+let wakeLockRetryTimer = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -895,9 +897,51 @@ function setupSocket() {
   socket.on('screen:reload', () => window.location.reload());
 }
 
+async function requestScreenWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    return;
+  }
+
+  if (document.visibilityState !== 'visible') {
+    return;
+  }
+
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => {
+      wakeLockSentinel = null;
+      scheduleWakeLockRetry();
+    });
+  } catch (_error) {
+    scheduleWakeLockRetry();
+  }
+}
+
+function scheduleWakeLockRetry() {
+  clearTimeout(wakeLockRetryTimer);
+  wakeLockRetryTimer = setTimeout(() => {
+    requestScreenWakeLock();
+  }, 7000);
+}
+
+function setupWakeLock() {
+  requestScreenWakeLock();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      requestScreenWakeLock();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    requestScreenWakeLock();
+  });
+}
+
 loadInitialData().catch(() => {
   applyData({ settings: { event_name: 'Herzlich Willkommen', event_subtitle: 'Warte auf Daten …', slide_duration: 12 }, programItems: [], notices: [], media: [], customSlides: [], queue: [] });
 });
 startClock();
 startProgramRefresh();
 setupSocket();
+setupWakeLock();
