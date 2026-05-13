@@ -135,6 +135,10 @@ app.get('/screen', (_req, res) => {
   res.sendFile(path.join(screenDir, 'index.html'));
 });
 
+app.get('/devices', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'devices.html'));
+});
+
 app.use('/admin/assets', express.static(adminDir));
 app.use('/screen/assets', express.static(screenDir));
 app.use('/uploads', express.static(uploadDir));

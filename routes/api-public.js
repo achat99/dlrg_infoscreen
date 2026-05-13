@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDashboardStats, getPublicScreenData } = require('../db');
+const { getDashboardStats, getPublicScreenData, getScreenClients } = require('../db');
 const { getScreenClientCount } = require('../socket');
 
 module.exports = function createPublicRouter() {
@@ -15,6 +15,10 @@ module.exports = function createPublicRouter() {
       ...getDashboardStats(),
       connectedScreens: getScreenClientCount(),
     });
+  });
+
+  router.get('/clients', (_req, res) => {
+    res.json(getScreenClients());
   });
 
   return router;
