@@ -92,6 +92,7 @@ function setupSocket(io) {
         const clientName = typeof name === 'string' ? name.trim().slice(0, 100) : '';
         if (clientName) {
           socket.data.clientName = clientName;
+          socket.join(`screen:${clientName}`);
           namedScreenClients.set(socket.id, clientName);
           upsertScreenClient(clientName);
           emitClientList();
@@ -150,6 +151,19 @@ function reloadScreens() {
   pushToRelay('/reload', {});
 }
 
+function reloadScreenByName(clientName) {
+  if (!ioInstance) {
+    return;
+  }
+
+  const normalizedName = String(clientName || '').trim();
+  if (!normalizedName) {
+    return;
+  }
+
+  ioInstance.to(`screen:${normalizedName}`).emit('screen:reload');
+}
+
 function getScreenClientCount() {
   return updateClientCounts().screen;
 }
@@ -159,6 +173,7 @@ module.exports = {
   broadcastScreenUpdate,
   forceSlide,
   reloadScreens,
+  reloadScreenByName,
   getScreenClientCount,
   emitClientList,
 };

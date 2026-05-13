@@ -112,6 +112,9 @@ function getSlideKey(slide = {}) {
   if (slide.type === 'program') {
     return `program:${slide.data?.id ?? slide.data?.title ?? ''}`;
   }
+  if (slide.type === 'highlight') {
+    return `highlight:${slide.data?.id ?? slide.data?.title ?? ''}`;
+  }
   if (slide.type === 'notice') {
     return `notice:${slide.data?.id ?? slide.data?.title ?? ''}`;
   }
@@ -247,11 +250,11 @@ function highlightSlides(programItems) {
     return [];
   }
 
-  return [{
-    type: 'highlight-overview',
-    items: programItems,
+  return programItems.map((item) => ({
+    type: 'highlight',
+    data: item,
     duration: getDefaultDuration(),
-  }];
+  }));
 }
 
 function buildSlideFromQueueItem(queueItem, data) {
@@ -352,22 +355,24 @@ function renderSlide(slide) {
     `;
   }
 
-  if (slide.type === 'highlight-overview') {
+  if (slide.type === 'highlight') {
+    const item = slide.data;
+    const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
+    const locationLabel = [formatProgramDate(item.start_at), item.location || ''].filter(Boolean).join(' · ');
+    const categoryLabel = [item.category || '', 'Highlight'].filter(Boolean).join(' · ');
+
     return `
-      <section class="slide overview-slide">
-        <div class="ov-heading">Highlights</div>
-        <div class="ov-list">
-          ${slide.items.map((item) => {
-            const timeLabel = formatProgramTimeRange(item.start_at, item.end_at, item.time);
-            return `
-            <div class="ov-row">
-              <div>${escapeHtml(item.icon || '')}</div>
-              <div class="ov-time">${escapeHtml(timeLabel)}</div>
-              <div><strong>${escapeHtml(item.title)}</strong></div>
-              <div>${escapeHtml(item.location || '')}</div>
-            </div>
-          `;
-          }).join('')}
+      <section class="slide program-slide highlight-slide">
+        <div>
+          <div class="prog-time">${escapeHtml(timeLabel)}</div>
+          <div class="prog-location">${escapeHtml(locationLabel || item.location || '')}</div>
+        </div>
+        <div class="prog-separator"></div>
+        <div>
+          <div class="prog-category">${escapeHtml(categoryLabel)}</div>
+          <div class="prog-title">${escapeHtml(item.title)}</div>
+          <div class="prog-desc">${escapeHtml(item.description || '')}</div>
+          <div class="mt-3" style="font-size:44px;">${escapeHtml(item.icon || '')}</div>
         </div>
       </section>
     `;
@@ -863,11 +868,24 @@ function startProgramRefresh() {
 
 function setupSocket() {
   const socket = io();
-  const urlName = new URLSearchParams(window.location.search).get('name') || '';
+  const params = new URLSearchParams(window.location.search);
+  const urlName = (params.get('name') || '').trim();
+  const storedName = String(window.localStorage.getItem('screenClientName') || '').trim();
+  const resolvedName = (urlName || storedName).slice(0, 100);
+
+  if (resolvedName) {
+    window.localStorage.setItem('screenClientName', resolvedName);
+    if (!urlName) {
+      params.set('name', resolvedName);
+      const queryString = params.toString();
+      const nextUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash || ''}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }
 
   socket.on('connect', () => {
     byId('connectionIndicator').classList.remove('offline');
-    socket.emit('client:register', { role: 'screen', name: urlName });
+    socket.emit('client:register', { role: 'screen', name: resolvedName });
   });
   socket.on('disconnect', () => {
     byId('connectionIndicator').classList.add('offline');

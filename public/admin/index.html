@@ -56,7 +56,10 @@
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="h5 fw-bold mb-0">Verbundene Systeme</h2>
-            <span class="text-secondary small">Systeme, die sich jemals verbunden haben</span>
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-secondary small">Systeme, die sich jemals verbunden haben</span>
+              <button class="btn btn-sm btn-outline-primary" id="reloadOnlineClientsBtn" type="button">Alle online neu laden</button>
+            </div>
           </div>
           <div id="clientListContainer">
             <p class="text-secondary" id="clientListEmpty">Noch keine Systeme bekannt.</p>
@@ -66,7 +69,7 @@
                   <th>Name</th>
                   <th>Status</th>
                   <th>Zuletzt gesehen</th>
-                  <th></th>
+                  <th class="text-end">Aktionen</th>
                 </tr>
               </thead>
               <tbody id="clientListBody"></tbody>
@@ -113,26 +116,33 @@
         const empty = document.getElementById('clientListEmpty');
         const table = document.getElementById('clientListTable');
         const tbody = document.getElementById('clientListBody');
+        const reloadOnlineBtn = document.getElementById('reloadOnlineClientsBtn');
 
         if (!clients || clients.length === 0) {
           empty.classList.remove('d-none');
           table.classList.add('d-none');
+          reloadOnlineBtn.disabled = true;
           return;
         }
 
         empty.classList.add('d-none');
         table.classList.remove('d-none');
+        reloadOnlineBtn.disabled = !clients.some((client) => Boolean(client.online));
 
         tbody.innerHTML = clients.map((c) => {
           const badge = c.online
             ? '<span class="badge bg-success">● Online</span>'
             : '<span class="badge bg-secondary">Offline</span>';
+          const reloadBtn = c.online
+            ? `<button class="btn btn-sm btn-outline-primary" data-reload-client="${c.id}" title="System neu laden">Neu laden</button>`
+            : '<button class="btn btn-sm btn-outline-secondary" disabled title="Nur bei Online-Systemen möglich">Neu laden</button>';
           return `
             <tr>
               <td><strong>${AdminCommon.escapeHtml(c.name)}</strong></td>
               <td>${badge}</td>
               <td class="text-secondary small">${formatRelativeTime(c.last_seen)}</td>
-              <td class="text-end">
+              <td class="text-end d-flex gap-2 justify-content-end">
+                ${reloadBtn}
                 <button class="btn btn-sm btn-outline-danger" data-delete-client="${c.id}" title="System entfernen">✕</button>
               </td>
             </tr>
@@ -151,14 +161,36 @@
 
       document.getElementById('clientListBody').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-delete-client]');
-        if (!btn) return;
-        const id = btn.dataset.deleteClient;
-        if (!confirm('System dauerhaft aus der Liste entfernen?')) return;
+        if (btn) {
+          const id = btn.dataset.deleteClient;
+          if (!confirm('System dauerhaft aus der Liste entfernen?')) return;
+          try {
+            await AdminCommon.apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
+            loadClientList();
+          } catch (_err) {
+            AdminCommon.showToast('Fehler beim Löschen des Systems', 'danger');
+          }
+          return;
+        }
+
+        const reloadBtn = e.target.closest('[data-reload-client]');
+        if (reloadBtn) {
+          const id = reloadBtn.dataset.reloadClient;
+          try {
+            await AdminCommon.apiFetch(`/api/clients/${id}/reload`, { method: 'POST' });
+            AdminCommon.showToast('Neuladen ausgelöst');
+          } catch (_err) {
+            AdminCommon.showToast('Neuladen konnte nicht ausgelöst werden', 'danger');
+          }
+        }
+      });
+
+      document.getElementById('reloadOnlineClientsBtn').addEventListener('click', async () => {
         try {
-          await AdminCommon.apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
-          loadClientList();
+          await AdminCommon.apiFetch('/api/clients/reload-all', { method: 'POST' });
+          AdminCommon.showToast('Neuladen für alle Online-Systeme ausgelöst');
         } catch (_err) {
-          AdminCommon.showToast('Fehler beim Löschen des Systems', 'danger');
+          AdminCommon.showToast('Neuladen konnte nicht ausgelöst werden', 'danger');
         }
       });
 
