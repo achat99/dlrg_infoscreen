@@ -244,6 +244,10 @@
 
       // Socket.IO für Live-Updates
       const socket = io();
+      socket.on('connect', () => {
+        socket.emit('client:register', { role: 'admin' });
+      });
+
       socket.on('admin:client-list', (clients) => {
         renderDevices(clients);
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE', {
