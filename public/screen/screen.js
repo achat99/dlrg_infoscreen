@@ -945,3 +945,15 @@ startClock();
 startProgramRefresh();
 setupSocket();
 setupWakeLock();
+
+// Automatischer Reload beim Tageswechsel
+function scheduleMidnightReload() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0, 0); // 00:01 Uhr
+  const ms = next - now;
+  setTimeout(() => {
+    loadInitialData();
+    scheduleMidnightReload();
+  }, ms);
+}
+scheduleMidnightReload();
