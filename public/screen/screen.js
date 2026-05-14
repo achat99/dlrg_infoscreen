@@ -860,6 +860,15 @@ function startProgramRefresh() {
   clearInterval(programRefreshTimer);
   programRefreshTimer = setInterval(() => {
     if (latestPayload) {
+      // Tageswechsel: Payload stammt von einem anderen Tag → frische Daten holen
+      const generatedDate = latestPayload.generatedAt
+        ? new Date(latestPayload.generatedAt).toDateString()
+        : null;
+      if (generatedDate && generatedDate !== new Date().toDateString()) {
+        loadInitialData().catch(() => {});
+        return;
+      }
+
       const nextSignature = getRenderableSignature(latestPayload);
       if (nextSignature !== lastRenderableSignature) {
         applyData(latestPayload, true);
@@ -952,7 +961,7 @@ function scheduleMidnightReload() {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0, 0); // 00:01 Uhr
   const ms = next - now;
   setTimeout(() => {
-    loadInitialData();
+    loadInitialData().catch(() => {});
     scheduleMidnightReload();
   }, ms);
 }

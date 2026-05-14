@@ -682,7 +682,10 @@ function getQueue(includeDisabled = true, options = {}) {
 function getPublicScreenData(options = {}) {
   const { includeStreams = true } = options;
   const settings = getSettings();
-  const programItems = getProgramItems(false, { currentAndFutureOnly: true, currentDayOnly: true });
+  // Keine server-seitige Tages-/Zeitfilterung: Der Client-Browser hat die korrekte
+  // Ortszeit und filtert selbst (getRenderablePayload). Der Server läuft ggf. in UTC,
+  // was bei Tagesgrenzen (z. B. 0:00–2:00 Uhr CEST) zu falsch gefiltertem Programm führt.
+  const programItems = getProgramItems(false);
 
   let mediaItems = getMedia(false);
   if (!includeStreams) {
