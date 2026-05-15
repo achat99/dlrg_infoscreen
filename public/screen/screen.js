@@ -8,6 +8,11 @@ let lastRenderableSignature = '';
 let wakeLockSentinel = null;
 let wakeLockRetryTimer = null;
 
+/** Liefert den relativen URL-Pfad zu einer hochgeladenen Datei. */
+function getUploadUrl(filename) {
+  return `/uploads/${encodeURIComponent(filename)}`;
+}
+
 function byId(id) {
   return document.getElementById(id);
 }
@@ -451,8 +456,8 @@ function renderSlide(slide) {
 
     const isVideo = /\.(mp4|webm)$/i.test(item.filename || '');
     const mediaElement = isVideo
-      ? `<video src="/uploads/${escapeHtml(item.filename)}" autoplay muted playsinline preload="metadata" aria-label="${escapeHtml(cleanTitle || 'Medieninhalt')}"></video>`
-      : `<img src="/uploads/${escapeHtml(item.filename)}" alt="${escapeHtml(cleanTitle || 'Bild')}" />`;
+      ? `<video src="${getUploadUrl(item.filename)}" autoplay muted playsinline preload="metadata" aria-label="${escapeHtml(cleanTitle || 'Medieninhalt')}"></video>`
+      : `<img src="${getUploadUrl(item.filename)}" alt="${escapeHtml(cleanTitle || 'Bild')}" />`;
 
     return `
       <section class="slide media-slide">
@@ -483,7 +488,7 @@ function renderSlide(slide) {
             <div class="custom-image-grid count-${images.length}">
               ${images.map((fileName, index) => `
                 <div class="custom-image-card image-${index + 1}">
-                  <img src="/uploads/${encodeURIComponent(fileName)}" alt="${escapeHtml(item.title || `Slide Bild ${index + 1}`)}" />
+                  <img src="${getUploadUrl(fileName)}" alt="${escapeHtml(item.title || `Slide Bild ${index + 1}`)}" />
                 </div>
               `).join('')}
             </div>
@@ -945,6 +950,11 @@ function setupWakeLock() {
   window.addEventListener('focus', () => {
     requestScreenWakeLock();
   });
+}
+
+// Service Worker registrieren – cached /uploads/* lokal im Browser-Speicher des Geräts
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/screen/assets/sw.js').catch(() => {});
 }
 
 loadInitialData().catch(() => {

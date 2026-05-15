@@ -141,7 +141,8 @@ app.get('/devices', (_req, res) => {
 
 app.use('/admin/assets', express.static(adminDir));
 app.use('/screen/assets', express.static(screenDir));
-app.use('/uploads', express.static(uploadDir));
+// Uploads werden mit Timestamp-Präfix gespeichert → eindeutige Dateinamen → immutable cachebar
+app.use('/uploads', express.static(uploadDir, { maxAge: '7d', immutable: true }));
 app.use('/stream-hls', express.static(streamManager.hlsBaseDir));
 
 app.post('/api/login', login);
